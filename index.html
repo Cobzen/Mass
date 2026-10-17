@@ -265,9 +265,9 @@ canvas{display:block;width:100%;height:100%;outline:none}
   width:32px;
   height:32px;
   box-sizing:border-box;
-  border:1.5px solid currentColor;
+  border:1.5px solid #2d2d2b;
   border-radius:50%;
-  background:rgba(45,45,43,.04);
+  background:#2d2d2b;
   transform:scale(.5);
   transform-origin:50% 50%;
   will-change:transform;
@@ -1698,6 +1698,346 @@ html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #dept
 html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label:nth-of-type(2),
 html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #depthFar{top:73% !important;}
 </style>
+
+<style id="ma-v762-menu-polish">
+/* v7.62 — menus use the same visual language as the movable dock. */
+:root{
+  --ma-menu-bg:rgba(242,242,239,.97);
+  --ma-menu-control:rgba(255,255,255,.62);
+  --ma-menu-line:rgba(70,70,68,.18);
+  --ma-menu-ink:#2d2d2b;
+  --ma-menu-muted:#777772;
+  --ma-menu-radius:24px;
+  --ma-menu-control-radius:15px;
+}
+
+/* Shared card shell. Do not alter open/close/display logic here. */
+html.ma-unified-ui #sideMenuPanel,
+html.ma-unified-ui #panel,
+html.ma-unified-ui #viewWorkplanePanel,
+html.ma-unified-ui #lightPanel,
+html.ma-unified-ui #safeFramePanel,
+html.ma-unified-ui #shortcutPanel{
+  box-sizing:border-box !important;
+  color:var(--ma-menu-ink) !important;
+  background:var(--ma-menu-bg) !important;
+  border:1px solid var(--ma-menu-line) !important;
+  border-radius:var(--ma-menu-radius) !important;
+  box-shadow:0 3px 16px rgba(0,0,0,.055) !important;
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+}
+
+html.ma-unified-ui #sideMenuPanel,
+html.ma-unified-ui #panel,
+html.ma-unified-ui #viewWorkplanePanel,
+html.ma-unified-ui #lightPanel,
+html.ma-unified-ui #safeFramePanel{
+  padding:12px !important;
+}
+
+html.ma-unified-ui #sideMenuPanel .head,
+html.ma-unified-ui #viewWorkplanePanel .head,
+html.ma-unified-ui #safeFramePanel .head,
+html.ma-unified-ui #shortcutPanel .head{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:10px !important;
+  min-height:34px;
+  margin:0 0 8px !important;
+  color:var(--ma-menu-ink) !important;
+  font-size:11px !important;
+  font-weight:750 !important;
+  letter-spacing:.075em !important;
+}
+html.ma-unified-ui #shortcutPanel .head .actions{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+/* Dock-like menu buttons. */
+html.ma-unified-ui #sideMenuPanel button,
+html.ma-unified-ui #panel button,
+html.ma-unified-ui #viewWorkplanePanel button,
+html.ma-unified-ui #lightPanel button,
+html.ma-unified-ui #safeFramePanel button,
+html.ma-unified-ui #shortcutPanel button{
+  box-sizing:border-box !important;
+  min-height:36px;
+  margin:0;
+  padding:0 11px !important;
+  border:1px solid var(--ma-menu-line) !important;
+  border-radius:var(--ma-menu-control-radius) !important;
+  background:var(--ma-menu-control) !important;
+  color:var(--ma-menu-ink) !important;
+  box-shadow:none !important;
+  font:650 9px/1 system-ui,-apple-system,BlinkMacSystemFont,sans-serif !important;
+  letter-spacing:.035em;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}
+html.ma-unified-ui #sideMenuPanel button:active,
+html.ma-unified-ui #panel button:active,
+html.ma-unified-ui #viewWorkplanePanel button:active,
+html.ma-unified-ui #lightPanel button:active,
+html.ma-unified-ui #safeFramePanel button:active,
+html.ma-unified-ui #shortcutPanel button:active,
+html.ma-unified-ui #safeFramePanel button.primary,
+html.ma-unified-ui #safeFramePanel button.activePreset,
+html.ma-unified-ui #shortcutPanel button.listening{
+  background:var(--ma-menu-ink) !important;
+  color:#fff !important;
+  border-color:var(--ma-menu-ink) !important;
+}
+
+html.ma-unified-ui #sideMenuPanel .menuSectionTitle{
+  margin:8px 3px 4px !important;
+  color:var(--ma-menu-muted) !important;
+  font-size:7px !important;
+  font-weight:800 !important;
+  letter-spacing:.13em !important;
+}
+html.ma-unified-ui #sideMenuPanel .menuGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+html.ma-unified-ui #sideMenuPanel .miniNote{
+  margin:7px 3px 1px !important;
+  color:var(--ma-menu-muted) !important;
+  font-size:7px !important;
+  line-height:1.45 !important;
+  letter-spacing:.02em;
+}
+html.ma-unified-ui #sideMenuPanel{
+  width:min(286px,calc(100vw - 20px)) !important;
+  max-height:min(440px,calc(100vh - 82px)) !important;
+  gap:5px !important;
+}
+
+/* Shared labels / range controls for retained feature cards. */
+html.ma-unified-ui #panel label,
+html.ma-unified-ui #viewWorkplanePanel label,
+html.ma-unified-ui #lightPanel label,
+html.ma-unified-ui #safeFramePanel label{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin:9px 2px 2px;
+  color:var(--ma-menu-muted);
+  font-size:8px;
+  font-weight:750;
+  letter-spacing:.035em;
+}
+html.ma-unified-ui #panel label span,
+html.ma-unified-ui #viewWorkplanePanel label span,
+html.ma-unified-ui #lightPanel label span,
+html.ma-unified-ui #safeFramePanel label span{
+  color:var(--ma-menu-ink);
+  font-variant-numeric:tabular-nums;
+}
+html.ma-unified-ui #panel input[type=range],
+html.ma-unified-ui #viewWorkplanePanel input[type=range],
+html.ma-unified-ui #lightPanel input[type=range],
+html.ma-unified-ui #safeFramePanel input[type=range]{
+  width:100%;
+  margin:0 0 4px;
+  accent-color:var(--ma-menu-ink);
+}
+html.ma-unified-ui #panel .row,
+html.ma-unified-ui #viewWorkplanePanel .row,
+html.ma-unified-ui #lightPanel .row,
+html.ma-unified-ui #safeFramePanel .row{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px;
+}
+html.ma-unified-ui #viewWorkplanePanel .miniNote,
+html.ma-unified-ui #safeFramePanel .miniNote{
+  margin:9px 2px 1px;
+  color:var(--ma-menu-muted);
+  font-size:8px;
+  line-height:1.4;
+}
+
+/* SAFE FRAME — compact light card, like a larger dock capsule. */
+html.ma-unified-ui #safeFramePanel{
+  right:max(12px,env(safe-area-inset-right)) !important;
+  top:max(12px,env(safe-area-inset-top)) !important;
+  width:min(310px,calc(100vw - 24px)) !important;
+}
+html.ma-unified-ui #safeFramePanel .presetGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+  margin-top:7px;
+}
+html.ma-unified-ui #safeFramePanel .presetGrid button{
+  min-height:34px;
+  padding:0 6px !important;
+}
+html.ma-unified-ui #safeFrameLabel{
+  padding:4px 8px;
+  border-radius:999px;
+  background:rgba(45,45,43,.9);
+  color:#fff;
+  font-size:8px;
+  font-weight:700;
+  letter-spacing:.045em;
+}
+
+/* SHORTCUTS — fixed readable columns, scrolling only the list itself. */
+html.ma-unified-ui #shortcutPanel{
+  right:max(14px,env(safe-area-inset-right)) !important;
+  top:max(14px,env(safe-area-inset-top)) !important;
+  bottom:auto !important;
+  width:min(640px,calc(100vw - 28px)) !important;
+  height:min(760px,calc(100vh - 28px)) !important;
+  max-height:calc(100vh - 28px) !important;
+  padding:12px !important;
+  flex-direction:column !important;
+  gap:0 !important;
+  overflow:hidden !important;
+}
+html.ma-unified-ui #shortcutPanel .head{
+  flex:0 0 auto;
+  margin-bottom:7px !important;
+}
+html.ma-unified-ui #shortcutPanel .head button{
+  min-height:32px;
+  padding:0 10px !important;
+  border-radius:14px !important;
+}
+html.ma-unified-ui #shortcutPanel .note{
+  flex:0 0 auto;
+  margin:0 0 8px;
+  padding:9px 11px;
+  border:1px solid rgba(70,70,68,.10);
+  border-radius:14px;
+  background:rgba(255,255,255,.42);
+  color:var(--ma-menu-muted);
+  font-size:8px;
+  line-height:1.45;
+}
+html.ma-unified-ui #shortcutList{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding:0 2px 6px 0;
+}
+html.ma-unified-ui .shortcutGroup{
+  margin:13px 4px 5px;
+  color:var(--ma-menu-muted);
+  font-size:7px;
+  font-weight:850;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+html.ma-unified-ui .shortcutGroup:first-child{margin-top:3px}
+html.ma-unified-ui .shortcutRow{
+  display:grid;
+  grid-template-columns:minmax(160px,1fr) minmax(105px,145px) 68px 34px;
+  align-items:center;
+  gap:6px;
+  min-height:44px;
+  margin:0 0 5px;
+  padding:4px 5px 4px 12px;
+  border:1px solid rgba(70,70,68,.13);
+  border-radius:17px;
+  background:rgba(255,255,255,.56);
+}
+html.ma-unified-ui .shortcutName{
+  min-width:0;
+  color:var(--ma-menu-ink);
+  font-size:9px;
+  font-weight:650;
+  line-height:1.25;
+}
+html.ma-unified-ui .shortcutValue{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  padding:7px 8px;
+  border:1px solid rgba(70,70,68,.12);
+  border-radius:12px;
+  background:rgba(242,242,239,.76);
+  color:var(--ma-menu-ink);
+  text-align:center;
+  font-size:8px;
+  font-weight:760;
+  font-variant-numeric:tabular-nums;
+}
+html.ma-unified-ui .shortcutValue.unbound{
+  color:#aaa9a3;
+  font-weight:600;
+}
+html.ma-unified-ui #shortcutPanel .shortcutLearn{
+  width:68px;
+  min-height:34px;
+  padding:0 6px !important;
+  border-radius:13px !important;
+}
+html.ma-unified-ui #shortcutPanel .shortcutClear{
+  width:34px;
+  min-width:34px;
+  height:34px;
+  min-height:34px;
+  padding:0 !important;
+  border-radius:50% !important;
+  font-size:15px !important;
+  font-weight:400 !important;
+}
+html.ma-unified-ui #shortcutCaptureHint,
+html.ma-unified-ui #shortcutLastInput{
+  flex:0 0 auto;
+  margin-top:7px;
+  padding:8px 10px;
+  border-radius:13px;
+  font-size:8px;
+  line-height:1.25;
+}
+html.ma-unified-ui #shortcutCaptureHint{
+  border:1px solid var(--ma-menu-ink);
+  background:var(--ma-menu-ink);
+  color:#fff;
+  font-weight:700;
+  letter-spacing:.035em;
+}
+html.ma-unified-ui #shortcutLastInput{
+  border:1px solid rgba(70,70,68,.11);
+  background:rgba(255,255,255,.44);
+  color:var(--ma-menu-muted);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* Keep controls readable on phone-sized screens too. */
+@media(max-width:560px){
+  html.ma-unified-ui #shortcutPanel{
+    width:calc(100vw - 16px) !important;
+    right:8px !important;
+    top:max(8px,env(safe-area-inset-top)) !important;
+    height:calc(100vh - max(16px,env(safe-area-inset-top) + env(safe-area-inset-bottom))) !important;
+  }
+  html.ma-unified-ui .shortcutRow{
+    grid-template-columns:minmax(0,1fr) 90px 58px 30px;
+    gap:4px;
+    padding-left:9px;
+  }
+  html.ma-unified-ui #shortcutPanel .shortcutLearn{width:58px}
+  html.ma-unified-ui #shortcutPanel .shortcutClear{
+    width:30px;min-width:30px;height:30px;min-height:30px;
+  }
+}
+</style>
+
 </head>
 <body>
 <div id="app">
@@ -1820,7 +2160,7 @@ html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #dept
   </div>
   <div id="shortcutPanel">
     <div class="head"><span>SHORTCUTS</span><div class="actions"><button id="shortcutReset">RESET</button><button id="shortcutClose">CLOSE</button></div></div>
-    <div class="note">Press LEARN beside a function, then press one button on your 8BitDo or keyboard. MA records exactly what Safari receives. Modifier combinations are supported. Use × to clear a binding.</div>
+    <div class="note">Choose LEARN, then press the keyboard or 8BitDo button you want. Modifier combinations are supported. × clears a binding.</div>
     <div id="shortcutList"></div>
     <div id="shortcutCaptureHint">LEARNING… PRESS A BUTTON ON 8BITDO OR KEYBOARD.</div>
     <div id="shortcutLastInput">LAST INPUT · —</div>
@@ -2288,6 +2628,7 @@ const MA_PROJECT_VERSION=1,MA_AUTOSAVE_DB='MA3D_AUTOSAVE',MA_AUTOSAVE_STORE='pro
 const MA_LIBRARY_DB='MA3D_LIBRARY_V3',MA_LIBRARY_STORE='projects',MA_LIBRARY_VERSION=1;
 const MA_LIBRARY_FALLBACK_INDEX='MA3D_LIBRARY_FALLBACK_INDEX_V1';
 const MA_LIBRARY_FALLBACK_PREFIX='MA3D_LIBRARY_PROJECT_V1_';
+const MA_LIBRARY_FALLBACK_THUMB_PREFIX='MA3D_LIBRARY_THUMB_V1_';
 const safeFrameState={enabled:false,aspect:'16:9',scale:1,maskOpacity:0.42};
 const depthViewState={near:1,far:30,fitted:false};
 let savedScenes=[],activeSceneId=null,nextSceneId=1,sceneViewDirty=false,applyingSceneView=false;
@@ -3861,7 +4202,7 @@ function openAutosaveDB(){
     req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
   });
 }
-function openProjectLibraryDB(timeoutMs=900){
+function openProjectLibraryDB(timeoutMs=5000){
   return new Promise(resolve=>{
     if(!('indexedDB' in window)){resolve(null);return;}
 
@@ -3952,7 +4293,14 @@ function readLibraryFallbackStored(id){
   if(!id)return null;
   try{
     const raw=localStorage.getItem(MA_LIBRARY_FALLBACK_PREFIX+id);
-    return raw?JSON.parse(raw):null;
+    if(!raw)return null;
+    const stored=JSON.parse(raw);
+    // Thumbnail is cached separately so a quota problem can never endanger the
+    // project recovery payload itself.
+    if(!stored.thumbnail){
+      try{stored.thumbnail=localStorage.getItem(MA_LIBRARY_FALLBACK_THUMB_PREFIX+id)||null;}catch(_){}
+    }
+    return stored;
   }catch(_){
     return null;
   }
@@ -3962,14 +4310,22 @@ function writeLibraryFallbackStored(stored){
   try{
     const fallbackStored={
       ...stored,
-      // The high-resolution preview belongs in IndexedDB. The synchronous
-      // fallback is for project recovery and must stay small/reliable.
+      // Keep the recovery payload independent of image quota. The preview is
+      // stored in its own best-effort key below.
       thumbnail:null
     };
     localStorage.setItem(
       MA_LIBRARY_FALLBACK_PREFIX+stored.id,
       JSON.stringify(fallbackStored)
     );
+    try{
+      const thumbKey=MA_LIBRARY_FALLBACK_THUMB_PREFIX+stored.id;
+      if(stored.thumbnail)localStorage.setItem(thumbKey,stored.thumbnail);
+      else localStorage.removeItem(thumbKey);
+    }catch(err){
+      // Never let thumbnail quota failure break project persistence.
+      console.warn('MA thumbnail fallback cache skipped',err);
+    }
     const ids=readLibraryFallbackIndex();
     if(!ids.includes(stored.id))ids.push(stored.id);
     writeLibraryFallbackIndex(ids);
@@ -3989,6 +4345,7 @@ function deleteLibraryFallbackStored(id){
   if(!id)return;
   try{
     localStorage.removeItem(MA_LIBRARY_FALLBACK_PREFIX+id);
+    localStorage.removeItem(MA_LIBRARY_FALLBACK_THUMB_PREFIX+id);
     writeLibraryFallbackIndex(
       readLibraryFallbackIndex().filter(x=>x!==id)
     );
@@ -4043,6 +4400,11 @@ async function listLibraryProjects(){
         const previous=byId.get(item.id);
         if(!previous||(item.updatedAt||0)>=(previous.updatedAt||0)){
           byId.set(item.id,item);
+        }
+        // Once IndexedDB has woken up, seed the synchronous thumbnail cache so
+        // the next app launch can paint project cards immediately.
+        if(item?.id&&item?.thumbnail){
+          try{localStorage.setItem(MA_LIBRARY_FALLBACK_THUMB_PREFIX+item.id,item.thumbnail);}catch(_){}
         }
       }
     }
@@ -12039,12 +12401,12 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 // after autosaving. This avoids accumulating stale runtime state across many opens.
 let standaloneHiddenAt=0;
 let standaloneResumeRefreshing=false;
-window.addEventListener('pagehide',()=>{saveAutosaveNow();});
+window.addEventListener('pagehide',()=>{saveAutosaveNow({thumbnail:true,force:true});});
 document.addEventListener('visibilitychange',async()=>{
   if(!window.__MA_STANDALONE__)return;
   if(document.visibilityState==='hidden'){
     standaloneHiddenAt=Date.now();
-    saveAutosaveNow();
+    saveAutosaveNow({thumbnail:true,force:true});
     return;
   }
   if(document.visibilityState!=='visible'||!standaloneHiddenAt||standaloneResumeRefreshing)return;
@@ -12059,7 +12421,7 @@ document.addEventListener('visibilitychange',async()=>{
   standaloneResumeRefreshing=true;
   try{await saveAutosaveNow();}catch(_){ }
   const u=new URL(location.href);
-  u.searchParams.set('__ma_build',window.__MA_BUILD__||'7.44');
+  u.searchParams.set('__ma_build',window.__MA_BUILD__||'7.61');
   u.searchParams.set('__ma_resume',String(Date.now()));
   location.replace(u.href);
 });
@@ -12120,14 +12482,14 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden'&&!projectLibraryVisible&&currentLibraryProjectId){
     clearTimeout(autosaveTimer);
     autosaveTimer=null;
-    saveAutosaveNow({force:true});
+    saveAutosaveNow({force:true,thumbnail:true});
   }
 },{passive:true});
 window.addEventListener('pagehide',()=>{
   if(!projectLibraryVisible&&currentLibraryProjectId){
     clearTimeout(autosaveTimer);
     autosaveTimer=null;
-    saveAutosaveNow({force:true});
+    saveAutosaveNow({force:true,thumbnail:true});
   }
 },{passive:true});
 
