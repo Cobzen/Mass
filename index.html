@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v7.44</title>
+<title>MA 3D · v7.53</title>
 <script>
 (() => {
   const CURRENT_BUILD = '7.44';
@@ -262,12 +262,16 @@ canvas{display:block;width:100%;height:100%;outline:none}
 }
 #brushSizeCircle{
   display:block;
-  width:16px;
-  height:16px;
+  width:32px;
+  height:32px;
+  box-sizing:border-box;
   border:1.5px solid currentColor;
   border-radius:50%;
   background:rgba(45,45,43,.04);
-  transition:width .04s linear,height .04s linear;
+  transform:scale(.5);
+  transform-origin:50% 50%;
+  will-change:transform;
+  transition:none;
 }
 
 /* VIEW / LOOK joysticks */
@@ -338,7 +342,7 @@ canvas{display:block;width:100%;height:100%;outline:none}
   align-items:center;
 }
 #sunDirPanel{grid-template-columns:54px minmax(0,1fr) 42px minmax(0,1fr);gap:8px}
-#depthRangePanel{grid-template-columns:38px minmax(0,1fr) 30px minmax(0,1fr) 68px;gap:8px}
+#depthRangePanel{grid-template-columns:38px minmax(0,1fr) 30px minmax(0,1fr);gap:8px}
 #sunDirPanel .head,#depthRangePanel .head{display:none}
 #sunDirPanel label,#depthRangePanel label{
   display:flex;
@@ -367,19 +371,6 @@ canvas{display:block;width:100%;height:100%;outline:none}
   accent-color:#272726;
 }
 #depthRangePanel .row{display:block;margin:0}
-#depthFit{
-  appearance:none;
-  width:68px;
-  height:34px;
-  padding:0 4px;
-  border:0;
-  border-radius:17px;
-  background:#272726;
-  color:#fff;
-  font-size:6px;
-  line-height:1;
-  font-weight:800;
-}
 #depthRangePanel .miniNote{display:none}
 
 /* Retained feature panels: kept simple and isolated from the modeling UI. */
@@ -469,8 +460,7 @@ canvas{display:block;width:100%;height:100%;outline:none}
     bottom:calc(var(--ma-dock-h) + env(safe-area-inset-bottom) + 2px);
   }
   #sunDirPanel{grid-template-columns:42px minmax(0,1fr) 34px minmax(0,1fr);gap:5px}
-  #depthRangePanel{grid-template-columns:32px minmax(0,1fr) 24px minmax(0,1fr) 56px;gap:5px}
-  #depthFit{width:56px;min-width:56px}
+  #depthRangePanel{grid-template-columns:32px minmax(0,1fr) 24px minmax(0,1fr);gap:5px}
 }
 
 
@@ -1316,6 +1306,397 @@ html.ma-iphone #depthRangePanel{
   padding-left:16px !important;
   padding-right:16px !important;
 }
+
+
+/* v7.53 — iPad Light / Depth follows the movable main dock.
+   Horizontal main dock -> horizontal secondary capsule.
+   Vertical main dock   -> vertical secondary capsule beside it. */
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal{
+  width:min(560px,calc(100vw - 16px)) !important;
+  max-width:calc(100vw - 16px) !important;
+  height:var(--ma-dock-cross) !important;
+  min-height:var(--ma-dock-cross) !important;
+  padding:var(--ma-side-dock-pad) 14px !important;
+}
+
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical{
+  width:174px !important;
+  max-width:174px !important;
+  height:auto !important;
+  min-height:0 !important;
+  padding:14px 13px !important;
+  gap:6px !important;
+  border-radius:calc(var(--ma-dock-cross) / 2) !important;
+  align-content:center !important;
+}
+
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical{
+  grid-template-columns:1fr !important;
+  grid-template-rows:auto 34px auto 34px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical{
+  grid-template-columns:1fr !important;
+  grid-template-rows:auto 34px auto 34px 36px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label{
+  align-items:center !important;
+  text-align:center !important;
+  font-size:7px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label span,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label span{
+  font-size:8px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical input[type=range],
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical input[type=range]{
+  width:100% !important;
+  height:34px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical .row{
+  display:flex !important;
+  justify-content:center !important;
+}
+
+
+/* v7.54 — iPad secondary Light / Depth dock matches the MAIN dock exactly.
+   Same outer dimensions, same orientation. Labels sit above their sliders so
+   the controls never make the secondary dock longer than the main dock. */
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal{
+  box-sizing:border-box !important;
+  width:var(--ma-dock-length) !important;
+  min-width:var(--ma-dock-length) !important;
+  max-width:var(--ma-dock-length) !important;
+  height:var(--ma-dock-cross) !important;
+  min-height:var(--ma-dock-cross) !important;
+  max-height:var(--ma-dock-cross) !important;
+  padding:5px 13px !important;
+  align-content:center !important;
+  align-items:center !important;
+}
+
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  grid-template-rows:18px 32px !important;
+  column-gap:16px !important;
+  row-gap:0 !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal label:nth-of-type(1){grid-column:1;grid-row:1}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal #sunDirAzimuth{grid-column:1;grid-row:2}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal label:nth-of-type(2){grid-column:2;grid-row:1}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal #sunDirElevation{grid-column:2;grid-row:2}
+
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) 72px !important;
+  grid-template-rows:18px 32px !important;
+  column-gap:13px !important;
+  row-gap:0 !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal label:nth-of-type(1){grid-column:1;grid-row:1}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal #depthNear{grid-column:1;grid-row:2}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal label:nth-of-type(2){grid-column:2;grid-row:1}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal #depthFar{grid-column:2;grid-row:2}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal .row{
+  grid-column:3 !important;
+  grid-row:1 / span 2 !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  margin:0 !important;
+}
+
+/* The label/value line is ABOVE its slider, not beside it. */
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal label,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal label{
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  width:100% !important;
+  min-width:0 !important;
+  margin:0 !important;
+  font-size:7px !important;
+  line-height:1 !important;
+  white-space:nowrap !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal label span,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal label span{
+  margin:0 0 0 5px !important;
+  font-size:7px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal input[type=range],
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal input[type=range]{
+  width:100% !important;
+  min-width:0 !important;
+  height:30px !important;
+  margin:0 !important;
+}
+
+/* Vertical main dock: the secondary capsule is exactly the same width/height
+   as the main dock. Each label remains immediately above its horizontal slider. */
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical{
+  box-sizing:border-box !important;
+  width:var(--ma-dock-cross) !important;
+  min-width:var(--ma-dock-cross) !important;
+  max-width:var(--ma-dock-cross) !important;
+  height:var(--ma-dock-length) !important;
+  min-height:var(--ma-dock-length) !important;
+  max-height:var(--ma-dock-length) !important;
+  padding:12px 7px !important;
+  grid-template-columns:minmax(0,1fr) !important;
+  justify-items:stretch !important;
+  align-content:center !important;
+  align-items:center !important;
+  column-gap:0 !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical{
+  grid-template-rows:18px 36px 18px 36px !important;
+  row-gap:12px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical{
+  grid-template-rows:18px 34px 18px 34px 38px !important;
+  row-gap:9px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label:nth-of-type(1),
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label:nth-of-type(1){grid-column:1;grid-row:1}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical #sunDirAzimuth,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #depthNear{grid-column:1;grid-row:2}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label:nth-of-type(2),
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label:nth-of-type(2){grid-column:1;grid-row:3}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical #sunDirElevation,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #depthFar{grid-column:1;grid-row:4}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical .row{
+  grid-column:1 !important;
+  grid-row:5 !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  margin:0 !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label{
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  width:100% !important;
+  min-width:0 !important;
+  margin:0 !important;
+  font-size:6px !important;
+  line-height:1 !important;
+  white-space:nowrap !important;
+  text-align:left !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label span,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label span{
+  margin:0 0 0 2px !important;
+  font-size:6px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical input[type=range],
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical input[type=range]{
+  width:100% !important;
+  min-width:0 !important;
+  height:32px !important;
+  margin:0 !important;
+}
+
+/* v7.55 — rotate the complete Light/Depth control composition when the follower
+   dock is vertical. Text AND sliders now follow the dock axis. */
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-horizontal > .maSecondaryInner,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal > .maSecondaryInner{
+  display:contents !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical{
+  padding:0 !important;
+  grid-template-columns:1fr !important;
+  grid-template-rows:1fr !important;
+  place-items:center !important;
+  overflow:visible !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical > .maSecondaryInner,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical > .maSecondaryInner{
+  box-sizing:border-box !important;
+  position:absolute !important;
+  left:50% !important;
+  top:50% !important;
+  width:var(--ma-dock-length) !important;
+  height:var(--ma-dock-cross) !important;
+  transform:translate(-50%,-50%) rotate(-90deg) !important;
+  transform-origin:center center !important;
+  padding:5px 13px !important;
+  align-content:center !important;
+  align-items:center !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical > .maSecondaryInner{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  grid-template-rows:18px 32px !important;
+  column-gap:16px !important;
+  row-gap:0 !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical > .maSecondaryInner{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) 72px !important;
+  grid-template-rows:18px 32px !important;
+  column-gap:13px !important;
+  row-gap:0 !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label:nth-of-type(1){grid-column:1 !important;grid-row:1 !important}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical #sunDirAzimuth{grid-column:1 !important;grid-row:2 !important}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label:nth-of-type(2){grid-column:2 !important;grid-row:1 !important}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical #sunDirElevation{grid-column:2 !important;grid-row:2 !important}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label:nth-of-type(1){grid-column:1 !important;grid-row:1 !important}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #depthNear{grid-column:1 !important;grid-row:2 !important}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label:nth-of-type(2){grid-column:2 !important;grid-row:1 !important}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #depthFar{grid-column:2 !important;grid-row:2 !important}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical .row{
+  grid-column:3 !important;
+  grid-row:1 / span 2 !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  margin:0 !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label{
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  width:100% !important;
+  min-width:0 !important;
+  margin:0 !important;
+  font-size:7px !important;
+  line-height:1 !important;
+  white-space:nowrap !important;
+  text-align:left !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label span,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label span{
+  margin:0 0 0 5px !important;
+  font-size:7px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical input[type=range],
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical input[type=range]{
+  width:100% !important;
+  min-width:0 !important;
+  height:30px !important;
+  margin:0 !important;
+  touch-action:none !important;
+}
+#sunDirPanel input[type=range],#depthRangePanel input[type=range]{touch-action:none;}
+html.ma-ipad #sunDirPanel,html.ma-ipad #depthRangePanel{touch-action:none !important;overscroll-behavior:contain;}
+
+/* v7.56 — clean vertical follower layout.
+   Keep the capsule itself identical to the main dock, but lay out each control
+   directly in vertical screen space. Sliders sit exactly on the capsule centre
+   line; labels/values are rotated beside them, equivalent to "above" the
+   slider in the horizontal layout. */
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical{
+  overflow:hidden !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical > .maSecondaryInner,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical > .maSecondaryInner{
+  position:absolute !important;
+  inset:0 !important;
+  width:100% !important;
+  height:100% !important;
+  transform:none !important;
+  display:block !important;
+  padding:0 !important;
+  box-sizing:border-box !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label{
+  position:absolute !important;
+  left:12px !important;
+  width:104px !important;
+  height:12px !important;
+  margin:0 !important;
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:5px !important;
+  white-space:nowrap !important;
+  font-size:7px !important;
+  line-height:1 !important;
+  text-align:center !important;
+  transform:translate(-50%,-50%) rotate(-90deg) !important;
+  transform-origin:center !important;
+  pointer-events:none !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label span,
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label span{
+  margin:0 !important;
+  font-size:7px !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical input[type=range],
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical input[type=range]{
+  position:absolute !important;
+  left:50% !important;
+  width:calc((var(--ma-dock-length) - 62px) / 2) !important;
+  min-width:0 !important;
+  height:30px !important;
+  margin:0 !important;
+  transform:translate(-50%,-50%) rotate(-90deg) !important;
+  transform-origin:center !important;
+  touch-action:none !important;
+}
+/* LIGHT: two equal, optically centred control zones. */
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label:nth-of-type(1),
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical #sunDirAzimuth{top:27% !important;}
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical label:nth-of-type(2),
+html.ma-draw-mobile:not(.ma-iphone) #sunDirPanel.ma-secondary-vertical #sunDirElevation{top:73% !important;}
+/* DEPTH: two equal, optically centred control zones. */
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label:nth-of-type(1),
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #depthNear{top:23% !important;}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label:nth-of-type(2),
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #depthFar{top:58% !important;}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical .row{
+  position:absolute !important;
+  left:50% !important;
+  top:86% !important;
+  width:auto !important;
+  height:auto !important;
+  margin:0 !important;
+  display:block !important;
+  transform:translate(-50%,-50%) !important;
+}
+/* Every dock control is a UI surface for Pencil as well as finger/mouse. */
+html.ma-ipad #maBottomDock,
+html.ma-ipad #maBottomDock button,
+html.ma-ipad #viewJoystick,
+html.ma-ipad #lookJoystick,
+html.ma-ipad #dockDragHandle,
+html.ma-ipad #sunDirPanel,
+html.ma-ipad #depthRangePanel,
+html.ma-ipad #sunDirPanel button,
+html.ma-ipad #depthRangePanel button,
+html.ma-ipad #sunDirPanel input,
+html.ma-ipad #depthRangePanel input{
+  touch-action:none !important;
+}
+
+
+/* v7.57 — Depth now uses the exact same two-control composition as Light.
+   Both controls now match the Light panel spacing. */
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-horizontal{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  grid-template-rows:18px 32px !important;
+  column-gap:16px !important;
+  row-gap:0 !important;
+}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label:nth-of-type(1),
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #depthNear{top:27% !important;}
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical label:nth-of-type(2),
+html.ma-draw-mobile:not(.ma-iphone) #depthRangePanel.ma-secondary-vertical #depthFar{top:73% !important;}
 </style>
 </head>
 <body>
@@ -1388,16 +1769,19 @@ html.ma-iphone #depthRangePanel{
     <div class="row" style="margin-top:9px"><button id="flip">FLIP DEPTH</button></div>
   </div>
   <div id="sunDirPanel">
-    <div class="head"><span>LIGHT</span><button id="sunDirClose">CLOSE</button></div>
-    <label>Direction <span id="sunDirAzimuthValue">-40°</span></label><input id="sunDirAzimuth" type="range" min="-180" max="180" step="1" value="-40">
-    <label>Height <span id="sunDirElevationValue">48°</span></label><input id="sunDirElevation" type="range" min="5" max="85" step="1" value="48">
+    <div class="maSecondaryInner">
+      <div class="head"><span>LIGHT</span><button id="sunDirClose">CLOSE</button></div>
+      <label>Direction <span id="sunDirAzimuthValue">-40°</span></label><input id="sunDirAzimuth" type="range" min="-180" max="180" step="1" value="-40">
+      <label>Height <span id="sunDirElevationValue">48°</span></label><input id="sunDirElevation" type="range" min="5" max="85" step="1" value="48">
+    </div>
   </div>
   <div id="depthRangePanel">
-    <div class="head"><span>DEPTH RANGE</span><button id="depthRangeClose">CLOSE</button></div>
-    <label>Near <span id="depthNearValue">1.0</span></label><input id="depthNear" type="range" min="0.1" max="250" step="0.1" value="1">
-    <label>Far <span id="depthFarValue">30.0</span></label><input id="depthFar" type="range" min="0.2" max="250" step="0.1" value="30">
-    <div class="row"><button id="depthFit">FIT SCENE</button></div>
-    <div class="miniNote">Near = black · Far = white. Values are camera-space distance.</div>
+    <div class="maSecondaryInner">
+      <div class="head"><span>DEPTH RANGE</span><button id="depthRangeClose">CLOSE</button></div>
+      <label>Near <span id="depthNearValue">1.0</span></label><input id="depthNear" type="range" min="0.1" max="250" step="0.1" value="1">
+      <label>Far <span id="depthFarValue">30.0</span></label><input id="depthFar" type="range" min="0.2" max="250" step="0.1" value="30">
+      <div class="miniNote">Near = black · Far = white. Values are camera-space distance.</div>
+    </div>
   </div>
   <div id="viewWorkplanePanel">
     <div class="head"><span>VIEW WORKPLANE</span><button id="viewWorkplaneClose">CLOSE</button></div>
@@ -1518,13 +1902,23 @@ window.__MA_DRAW_MOBILE__=__maDrawMobile;
 window.__MA_UNIFIED_UI__=true;
 window.__MA_IS_IPAD__=__maIsIPad;
 window.__MA_IS_IPHONE__=__maIsIPhone;
+function __maShowBootError(reason){
+  // Only label failures as startup errors while the app is actually booting.
+  // Runtime errors after a successful boot stay in the console instead of
+  // incorrectly covering the viewport with “APP START ERROR”.
+  if(window.__MA_BOOTED){
+    console.error('MA runtime error',reason);
+    return;
+  }
+  const t=document.getElementById('toast');
+  if(t){t.textContent='APP START ERROR';t.style.opacity=1;}
+  console.error('MA boot error',reason);
+}
 window.addEventListener('error', function(e){
-  const t=document.getElementById('toast');
-  if(t){t.textContent='APP START ERROR';t.style.opacity=1;}
+  __maShowBootError(e.error||e.message||e);
 });
-window.addEventListener('unhandledrejection', function(){
-  const t=document.getElementById('toast');
-  if(t){t.textContent='APP START ERROR';t.style.opacity=1;}
+window.addEventListener('unhandledrejection', function(e){
+  __maShowBootError(e.reason||e);
 });
 // MA is an app surface, not a web document: suppress browser text selection,
 // long-press callouts, drag previews and context menus across the whole UI.
@@ -1754,6 +2148,8 @@ function syncUnifiedLookSettings(){
     if(lightPanel)lightPanel.style.display='none';
     if(depthPanel)depthPanel.style.display='none';
   }
+
+  if(viewMode==='shadow'||viewMode==='depth')requestAnimationFrame(positionSecondaryViewPanels);
 }
 
 function applyViewMode(mode,{rememberPrevious=true}={}){
@@ -2117,10 +2513,9 @@ function buildHighResExport(targetLongEdge=4096){
   return{canvas:exportCanvas,name:exportName,restore};
 }
 function exportCurrentPNG(){
-  const job=buildHighResExport();
-  downloadCanvasPNG(job.canvas,job.name);
-  job.restore();
-  showToast(safeFrameState.enabled?'PNG EXPORTED · SAFE FRAME · 4K · TRANSPARENT':'PNG EXPORTED · 4K · TRANSPARENT');
+  // iOS/PWA does not reliably honor <a download>. Use the native Share Sheet
+  // for PNG export when available, just like project sharing.
+  shareCurrentPNG();
 }
 function dataURLToFile(dataURL,name){
   const parts=dataURL.split(','),meta=parts[0],data=parts[1]||'';
@@ -2133,20 +2528,23 @@ function shareCurrentPNG(){
   const job=buildHighResExport();
   try{
     const file=dataURLToFile(job.canvas.toDataURL('image/png'),job.name);
-    if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
-      // Opens the iPad/iPhone system share sheet. Procreate, Files, AirDrop,
-      // Photoshop etc. can appear here when installed and registered for PNG files.
-      navigator.share({files:[file],title:'MA 3D'}).catch(err=>{
-        if(err?.name!=='AbortError')downloadCanvasPNG(job.canvas,job.name);
+    if(typeof navigator.share==='function'){
+      navigator.share({files:[file]}).catch(err=>{
+        if(err?.name!=='AbortError'){
+          console.warn('MA PNG share failed',err);
+          downloadCanvasPNG(job.canvas,job.name);
+          showToast('PNG SHARE FAILED · DOWNLOAD FALLBACK');
+        }
       }).finally(()=>job.restore());
-      showToast('SHARE PNG · 4K · TRANSPARENT');
+      showToast(safeFrameState.enabled?'EXPORT PNG · SAFE FRAME · SHARE':'EXPORT PNG · SHARE');
       return;
     }
     downloadCanvasPNG(job.canvas,job.name);
-    showToast('SHARE NOT AVAILABLE · PNG SAVED · TRANSPARENT');
+    showToast('PNG DOWNLOADED');
   }catch(err){
-    downloadCanvasPNG(job.canvas,job.name);
-    showToast('PNG SAVED · TRANSPARENT');
+    console.warn('MA PNG export failed',err);
+    try{downloadCanvasPNG(job.canvas,job.name);}catch(_){}
+    showToast('PNG EXPORT FAILED');
   }
   job.restore();
 }
@@ -4965,10 +5363,21 @@ function setMobileDrawKind(kind){
   if(!MA_UNIFIED_UI)return;
   const next=(kind==='rect'||kind==='boxbrush'||kind==='roundbrush')?kind:'shape';
   if(next!==mobileDrawKind){
+    const wasBrush=mobileDrawKind==='boxbrush'||mobileDrawKind==='roundbrush';
+    const willBrush=next==='boxbrush'||next==='roundbrush';
     clearActiveBrushContainer();
+
+    // SHAPE / RECT use brushDepth as their single size value. When returning
+    // to a volumetric round/square brush, start from that same visible size so
+    // width and depth cannot inherit two different old values and distort the
+    // first stroke until the user touches SIZE again.
+    if(willBrush&&!wasBrush)setBrushSize(brushDepth());
+    else if(!willBrush&&wasBrush)setBrushDepth(brushSize());
+
     mobileDrawKind=next;
   }
   setTool(mobileDrawTool());
+  updateBrushSizeButton();
   updateMobileDrawUI();
   showToast(mobileDrawKindLabel(next));
 }
@@ -5080,11 +5489,11 @@ function brushSizePreviewDiameter(v=(mobileDrawKind==='boxbrush'||mobileDrawKind
 }
 function updateBrushSizeButton(){
   const circle=document.getElementById('brushSizeCircle');
-  if(circle){
-    const d=brushSizePreviewDiameter();
-    circle.style.width=`${d.toFixed(1)}px`;
-    circle.style.height=`${d.toFixed(1)}px`;
-  }
+  if(!circle)return;
+  // Keep the preview's layout size fixed and animate only the compositor transform.
+  // This avoids repeated layout/reflow while scrubbing SIZE on iPad.
+  const d=brushSizePreviewDiameter();
+  circle.style.transform=`scale(${(d/32).toFixed(4)})`;
 }
 
 function primaryDockMode(){
@@ -5546,9 +5955,11 @@ function setBrushWidth(v){
   brushWidthValue=clamp(v,.05,24);
   activeDepth=brushWidthValue;
   updateIPadBrushButton();
+  updateBrushSizeButton();
 }
 function setBrushDepth(v){
   brushDepthValue=clamp(v,.05,24);
+  updateBrushSizeButton();
 }
 function currentBrushSample(spatialDepth=0){
   return{width:brushSize(),depth:brushDepth(),spatialDepth};
@@ -5602,8 +6013,11 @@ function updateIPadBrushButton(){
 }
 function setBrushSize(v){
   const size=clamp(v,.05,24);
-  setBrushWidth(size);
-  setBrushDepth(size);
+  brushWidthValue=size;
+  brushDepthValue=size;
+  activeDepth=size;
+  updateIPadBrushButton();
+  updateBrushSizeButton();
 }
 function hideBrushSizer(){ui.brushSizer.style.display='none';updateIPadBrushButton();}
 function beginBrushSizing(){
@@ -5868,14 +6282,21 @@ function updateShapeFillPreview(st){
   if(!previewFill.children.length){disposePreviewObject(previewFill);previewFill=null;}
 }
 
-function eraseWithFillCutterWorld(cutterWorld){
+function eraseWithFillCutterWorld(cutterWorld,targetId=null){
   if(!cutterWorld||!masses.length)return false;
   cutterWorld.computeBoundingBox();
   const cutterBox=cutterWorld.boundingBox.clone();
   let changed=false;
   const toDelete=[];
 
-  for(const m of [...masses]){
+  // Unified ERASE locks to the object hit when the stroke begins. This keeps
+  // one erase gesture from cutting unrelated objects that merely cross the
+  // cutter later in the stroke. targetId=null preserves legacy callers.
+  const eraseTargets=targetId==null
+    ?[...masses]
+    :[massById(targetId)].filter(Boolean);
+
+  for(const m of eraseTargets){
     m.group.updateMatrixWorld(true);
     const worldBox=new THREE.Box3().setFromObject(m.group);
     if(!worldBox.intersectsBox(cutterBox))continue;
@@ -5972,7 +6393,7 @@ function commitShapeFill(st,points){
       if(!cutter)continue;
       try{
         cutter.applyMatrix4(worldM);
-        if(eraseWithFillCutterWorld(cutter))changed=true;
+        if(eraseWithFillCutterWorld(cutter,st.eraseTargetId))changed=true;
       }finally{
         cutter.dispose();
       }
@@ -6280,7 +6701,7 @@ function commitCurveStroke(st,points,brushSamples=null){
       cutter.applyMatrix4(mat);
       cutter.computeBoundingBox();
       cutter.computeBoundingSphere();
-      changed=eraseWithFillCutterWorld(cutter);
+      changed=eraseWithFillCutterWorld(cutter,st.eraseTargetId);
     }catch(err){
       console.warn('Unified brush erase failed',err);
     }finally{
@@ -6312,38 +6733,20 @@ function commitCurveStroke(st,points,brushSamples=null){
     }catch(err){console.warn('Curve/box brush cut failed',err);showToast(st.tool==='boxbrush'?'BOX BRUSH CUT FAILED':'CURVE CUT FAILED');}
     finally{cutter.dispose();}
   }else{
+    // Every completed brush stroke is its own authoritative object. Do not
+    // union new strokes into an earlier brush object; selection, movement,
+    // delete and undo can therefore address each stroke independently.
+    clearActiveBrushContainer();
     const type=brushMassTypeForTool(st.tool);
     const g=st.tool==='boxbrush'?createBoxCurveStrokeGeometry(strokePoints,brushSize(),brushSamples,brushDepth()):createCurveStrokeGeometry(strokePoints,brushSize(),1,brushSamples,brushDepth());
     if(g&&MA_UNIFIED_UI&&st.brushStrokeMode)placeUnifiedBrushOnPlane(g,false);
     if(!g){showToast(st.tool==='boxbrush'?'BOX BRUSH FAILED':'CURVE FAILED');return;}
-    const host=getActiveBrushContainer(st.tool);
-    if(host){
-      try{
-        const mat=new THREE.Matrix4().compose(plane.origin.clone(),q,new THREE.Vector3(1,1,1));
-        host.group.updateMatrixWorld(true);
-        const hostInv=host.group.matrixWorld.clone().invert();
-        const strokeToHost=hostInv.multiply(mat);
-        if(appendBrushStrokeGeometry(host,g,strokeToHost)){
-          if(MA_UNIFIED_UI)setSelection([]);
-          else selectMass(host);
-          setActiveBrushContainer(host,st.tool);
-          recordHistory();
-          showToast(st.tool==='boxbrush'?'SQUARE BRUSH STROKE':'ROUND BRUSH STROKE');
-        }else{
-          showToast(st.tool==='boxbrush'?'BOX BRUSH FAILED':'CURVE FAILED');
-        }
-      }catch(err){
-        console.warn('Brush stroke append failed',err);
-        showToast(st.tool==='boxbrush'?'BOX BRUSH FAILED':'CURVE FAILED');
-      }finally{g.dispose();}
-      return;
-    }
     const m=makeMass({type,profile:[{x:0,y:0},{x:1,y:0},{x:1,y:1}],depth:activeDepth,bakedPositions:serializeGeometry(g),position:plane.origin.toArray(),quaternion:q.toArray(),scale:[1,1,1]},false);g.dispose();
     if(m){
       if(MA_UNIFIED_UI)setSelection([]);
       else selectMass(m);
-      setActiveBrushContainer(m,st.tool);
       recordHistory();
+      scheduleAutosave();
       showToast(st.tool==='boxbrush'?'SQUARE BRUSH':'ROUND BRUSH');
     }
   }
@@ -6371,11 +6774,26 @@ function beginDraw(e){
   const rectFillMode=MA_UNIFIED_UI&&unifiedKind==='rect';
   const brushStrokeMode=MA_UNIFIED_UI&&(unifiedKind==='boxbrush'||unifiedKind==='roundbrush');
 
+  const eraseMode=!!(MA_UNIFIED_UI&&mobileEraseHeld);
+  let eraseTargetId=null;
+  if(eraseMode){
+    // prepareMobileStrokePlane() normally puts the hit object's id on the
+    // workplane. Raycast once more as a robust fallback for desktop/Pencil
+    // paths that may enter beginDraw directly.
+    eraseTargetId=plane.hostId??null;
+    if(eraseTargetId==null){
+      const eraseStartHit=raycastMasses(e.clientX,e.clientY);
+      const eraseStartMass=massFromHit(eraseStartHit);
+      eraseTargetId=eraseStartMass?.id??null;
+    }
+  }
+
   interaction={
     kind:'draw',
     tool:activeTool,
     unifiedDrawKind:unifiedKind,
-    eraseMode:!!(MA_UNIFIED_UI&&mobileEraseHeld),
+    eraseMode,
+    eraseTargetId,
     shapeFillMode,
     rectFillMode,
     brushStrokeMode,
@@ -6510,9 +6928,11 @@ function updateDraw(e){
   }
 
   if(st.shapeFillMode){
-    // Safari/iPad can coalesce several fast Pencil samples into one event.
-    // Keep those samples so a quick shape does not collapse to 2–3 points and
-    // then fail at commit time.
+    // Safari/iPad can coalesce several fast Pencil samples into one event, and
+    // some WebKit/PWA builds can also deliver very sparse Pencil moves. Keep
+    // coalesced samples AND interpolate long screen-space gaps so Shape Fill
+    // always receives a real path instead of occasionally ending with only
+    // two points and disappearing on Pencil-up.
     const coalesced=typeof e.getCoalescedEvents==='function'
       ?e.getCoalescedEvents()
       :[];
@@ -6529,19 +6949,31 @@ function updateDraw(e){
     let changed=false;
 
     for(const sample of samples){
-      const sp=pointOnPlaneXY(sample.clientX,sample.clientY,activePlane);
-      if(!sp)continue;
-      const suv=uvOnPlanePoint(sp,activePlane);
-      const ss=vec2(sample.clientX,sample.clientY);
-      lastUV=suv;
+      const target=vec2(sample.clientX,sample.clientY);
+      const from=st.lastScreen.clone();
+      const distance=target.distanceTo(from);
+      if(distance<1.2)continue;
 
-      // Dense raw capture is cheap; the assist/RDP pass below still keeps the
-      // resulting geometry light.
-      if(ss.distanceTo(st.lastScreen)>1.4){
-        st.rawPoints.push(suv.clone());
-        st.lastScreen.copy(ss);
-        changed=true;
+      // About one raw sample every 2.5 px. Cap interpolation per browser event
+      // so a pathological jump cannot create hundreds of raycasts at once.
+      const steps=Math.min(24,Math.max(1,Math.ceil(distance/2.5)));
+      let accepted=false;
+      for(let i=1;i<=steps;i++){
+        const t=i/steps;
+        const sx=from.x+(target.x-from.x)*t;
+        const sy=from.y+(target.y-from.y)*t;
+        const sp=pointOnPlaneXY(sx,sy,activePlane);
+        if(!sp)continue;
+        const suv=uvOnPlanePoint(sp,activePlane);
+        const prev=st.rawPoints[st.rawPoints.length-1];
+        if(!prev||suv.distanceToSquared(prev)>1e-10){
+          st.rawPoints.push(suv.clone());
+          lastUV=suv;
+          changed=true;
+          accepted=true;
+        }
       }
+      if(accepted)st.lastScreen.copy(target);
     }
 
     if(changed)st.points=buildShapeAssistProfile(st,st.rawPoints);
@@ -8363,6 +8795,60 @@ function clearDockEdges(){
   maControlsDock.style.transform='none';
 }
 
+/* v7.53: Light / Depth is a true follower of the movable main dock on iPad. */
+function visibleSecondaryViewPanels(){
+  return [
+    document.getElementById('sunDirPanel'),
+    document.getElementById('depthRangePanel')
+  ].filter(p=>p&&getComputedStyle(p).display!=='none');
+}
+
+function positionSecondaryViewPanels(){
+  if(!MA_UNIFIED_UI||MA_IS_IPHONE||!maControlsDock)return;
+  const panels=visibleSecondaryViewPanels();
+  if(!panels.length)return;
+
+  const side=maControlsDock.dataset.side||dockPosition.side||'left';
+  const vertical=side==='left'||side==='right';
+  const dockRect=maControlsDock.getBoundingClientRect();
+  const gap=10;
+  const margin=6;
+  const W=Math.max(1,window.innerWidth);
+  const H=Math.max(1,window.innerHeight);
+
+  for(const panel of panels){
+    panel.classList.toggle('ma-secondary-vertical',vertical);
+    panel.classList.toggle('ma-secondary-horizontal',!vertical);
+    panel.dataset.side=side;
+
+    // Clear the old fixed bottom/center positioning before measuring.
+    panel.style.left='0px';
+    panel.style.right='auto';
+    panel.style.top='0px';
+    panel.style.bottom='auto';
+    panel.style.transform='none';
+
+    const pr=panel.getBoundingClientRect();
+    let left,top;
+    if(vertical){
+      left=side==='left'
+        ?dockRect.right+gap
+        :dockRect.left-gap-pr.width;
+      top=dockRect.top+(dockRect.height-pr.height)*.5;
+    }else{
+      left=dockRect.left+(dockRect.width-pr.width)*.5;
+      top=side==='top'
+        ?dockRect.bottom+gap
+        :dockRect.top-gap-pr.height;
+    }
+
+    left=clamp(left,margin,Math.max(margin,W-margin-pr.width));
+    top=clamp(top,margin,Math.max(margin,H-margin-pr.height));
+    panel.style.left=`${Math.round(left)}px`;
+    panel.style.top=`${Math.round(top)}px`;
+  }
+}
+
 /* Position from the saved MAIN-DOCK center along the active perimeter edge. */
 function applyDockPosition(){
   if(!maControlsDock)return;
@@ -8419,6 +8905,8 @@ function applyDockPosition(){
     if(side==='top')maControlsDock.style.top=`${margin}px`;
     else maControlsDock.style.bottom=`${margin}px`;
   }
+
+  positionSecondaryViewPanels();
 }
 
 function edgeDistances(x,y){
@@ -8526,6 +9014,8 @@ function placeDockFromGrab(x,y){
       t:clamp((left+m.length*.5)/W,0,1)
     };
   }
+
+  positionSecondaryViewPanels();
 }
 
 function queueDockDragPoint(x,y){
@@ -8652,6 +9142,8 @@ installPencilButtonActivation(document.getElementById('sideMenuPanel'));
 installPencilButtonActivation(document.getElementById('safeFramePanel'));
 installPencilButtonActivation(document.getElementById('shortcutPanel'));
 installPencilButtonActivation(document.getElementById('mainMenuButton'));
+installPencilButtonActivation(document.getElementById('sunDirPanel'));
+installPencilButtonActivation(document.getElementById('depthRangePanel'));
 
 const mainMenuButton=document.getElementById('mainMenuButton');
 if(mainMenuButton){
@@ -8719,15 +9211,15 @@ function syncLookJoystickUI(){
   const selectionMode=lookJoystickSelectionMode();
 
   if(selectionMode){
-    // Select context:
-    // up = Group, down = Ungroup, left = Delete, right = Select All.
-    if(up)up.textContent='+';
-    if(down)down.textContent='−';
-    if(left)left.textContent='×';
-    if(right)right.textContent='○';
+    // Select context, arranged spatially as requested:
+    // top = Select All (O), bottom = Delete (X), left = Ungroup (-), right = Group (+).
+    if(up)up.textContent='○';
+    if(down)down.textContent='×';
+    if(left)left.textContent='−';
+    if(right)right.textContent='+';
     root.setAttribute(
       'aria-label',
-      'Selection joystick. Up group, down ungroup, left delete, right select all.'
+      'Selection joystick. Up select all, down delete, left ungroup, right group.'
     );
   }else{
     if(up)up.textContent='L';
@@ -8741,10 +9233,10 @@ function syncLookJoystickUI(){
   }
 }
 function selectionActionForJoyDirection(dir){
-  return dir==='up'?'group':
-    dir==='down'?'ungroup':
-    dir==='left'?'delete':
-    dir==='right'?'all':
+  return dir==='up'?'all':
+    dir==='down'?'delete':
+    dir==='left'?'ungroup':
+    dir==='right'?'group':
     null;
 }
 function runSelectionJoystickAction(action){
@@ -8828,7 +9320,6 @@ function lookModeForJoyDirection(dir){
 }
 function beginViewJoystick(e){
   e.preventDefault();e.stopPropagation();
-  if(e.pointerType==='pen')return;
   if(viewJoystickGesture)return;
   unifiedUIPointers.add(e.pointerId);
   viewJoystickGesture={
@@ -8923,7 +9414,6 @@ function endViewJoystick(e,cancel=false){
 }
 function beginLookJoystick(e){
   e.preventDefault();e.stopPropagation();
-  if(e.pointerType==='pen')return;
   if(lookJoystickGesture)return;
   unifiedUIPointers.add(e.pointerId);
   lookJoystickGesture={
@@ -9183,7 +9673,10 @@ window.addEventListener('pointermove',e=>{
   if(e.pointerType==='pen')registerIPadPencil();
 },{capture:true,passive:true});
 window.addEventListener('pointerdown',e=>{
-  if(e.pointerType==='pen')registerIPadPencil();
+  if(e.pointerType==='pen'){
+    if(e.isTrusted!==false)lastNativePenPointerAt=performance.now();
+    registerIPadPencil();
+  }
 },{capture:true,passive:true});
 
 function deactivatePencilDraw(){
@@ -9686,6 +10179,7 @@ if(mobileSizeBtn){
       pointerId:e.pointerId,
       startX:e.clientX,
       startY:e.clientY,
+      side:maControlsDock?.dataset.side||dockPosition?.side||'left',
       startSize:(mobileDrawKind==='boxbrush'||mobileDrawKind==='roundbrush')?brushSize():brushDepth()
     };
     mobileSizeBtn.classList.add('active');
@@ -9697,11 +10191,17 @@ if(mobileSizeBtn){
     e.preventDefault();e.stopPropagation();
     const dx=e.clientX-unifiedSizeDrag.startX;
     const dy=e.clientY-unifiedSizeDrag.startY;
-    const travel=dx-dy*.35;
-    const next=unifiedSizeDrag.startSize*Math.exp(travel*.012);
+    const vertical=unifiedSizeDrag.side==='left'||unifiedSizeDrag.side==='right';
+
+    // Match the gesture to the dock orientation. On a side dock, SIZE is a
+    // true vertical scrub: drag UP for bigger and DOWN for smaller. The old
+    // diagonal formula only used 35% of vertical travel, which made iPad feel
+    // unresponsive when the dock was on the left/right edge.
+    const travel=vertical?-dy:dx;
+    const sensitivity=vertical?.009:.012;
+    const next=unifiedSizeDrag.startSize*Math.exp(travel*sensitivity);
     if(mobileDrawKind==='boxbrush'||mobileDrawKind==='roundbrush')setBrushSize(next);
     else setBrushDepth(next);
-    updateBrushSizeButton();
   },{passive:false});
 
   const endSize=e=>{
@@ -9763,9 +10263,6 @@ document.getElementById('depthNear').oninput=e=>{
 document.getElementById('depthFar').oninput=e=>{
   depthViewState.far=Math.max(depthViewState.near+.1,+e.target.value);
   depthViewState.fitted=true;syncDepthRangeUI();markSceneViewDirty();scheduleAutosave();
-};
-document.getElementById('depthFit').onclick=()=>{
-  fitDepthRange();markSceneViewDirty();scheduleAutosave();
 };
 ui.depth.oninput=e=>{if(!selected||selected.baked)return;const d=(selected.depth<0?-1:1)*(+e.target.value);rebuildMass(selected,{depth:d});ui.depthValue.textContent=selected.depth.toFixed(2);};ui.depth.onchange=()=>{if(selected&&!selected.baked)recordHistory();};
 document.getElementById('flip').onclick=()=>{if(!selected||selected.baked)return;rebuildMass(selected,{depth:-selected.depth});ui.depth.value=Math.abs(selected.depth);ui.depthValue.textContent=selected.depth.toFixed(2);recordHistory();};
@@ -10203,15 +10700,158 @@ function isStylusTouch(touch){
     Number.isFinite(+touch.azimuthAngle)
   );
 }
-function dispatchStylusPointer(type,touch){
-  if(!touch || typeof PointerEvent!=='function')return false;
+// v7.56: one Pencil UI router for the whole dock system.
+// A Pencil gesture that STARTS on UI remains UI-only until release. This is
+// deliberately decided from elementFromPoint(), not TouchEvent.target, because
+// iPadOS can keep a multi-touch sequence targeted at the element where the
+// first finger started. That was the source of Pencil UI gestures leaking into
+// the modelling workspace.
+const secondaryPencilRanges=[
+  document.getElementById('sunDirAzimuth'),
+  document.getElementById('sunDirElevation'),
+  document.getElementById('depthNear'),
+  document.getElementById('depthFar')
+].filter(Boolean);
+const stylusRangeFallbackIds=new Map();
+const stylusUIFallbackIds=new Map();
+const PENCIL_UI_ROOT_SELECTOR=[
+  '#projectLibrary','#maBottomDock','#viewJoystick','#lookJoystick',
+  '#dockDragHandle','#mainMenuButton','#sunDirPanel','#depthRangePanel',
+  '#sideMenuPanel','#safeFramePanel','#shortcutPanel','#inputModeToggle'
+].join(',');
 
+function secondaryRangeAtPoint(x,y){
+  const hit=document.elementFromPoint(x,y);
+  return hit?.closest?.('#sunDirPanel input[type="range"],#depthRangePanel input[type="range"]')||null;
+}
+function pencilUIControlAtPoint(x,y){
+  const hit=document.elementFromPoint(x,y);
+  if(!(hit instanceof Element))return null;
+  const root=hit.closest(PENCIL_UI_ROOT_SELECTOR);
+  if(!root)return null;
+
+  // Route to the element that already owns the app's pointer handlers.
+  const control=
+    hit.closest('input[type="range"]') ||
+    hit.closest('button') ||
+    hit.closest('#viewJoystick') ||
+    hit.closest('#lookJoystick') ||
+    hit.closest('#dockDragHandle');
+
+  return {root,target:control||root,actionable:!!control};
+}
+function setSecondaryRangeFromClient(range,x,y,{commit=false}={}){
+  if(!range)return false;
+  const r=range.getBoundingClientRect();
+  if(r.width<1||r.height<1)return false;
+  const vertical=!!range.closest('#sunDirPanel,#depthRangePanel')?.classList.contains('ma-secondary-vertical');
+  let t=vertical?(r.bottom-y)/Math.max(1,r.height):(x-r.left)/Math.max(1,r.width);
+  t=clamp(t,0,1);
+  const min=Number.isFinite(+range.min)?+range.min:0;
+  const max=Number.isFinite(+range.max)?+range.max:100;
+  const step=(range.step&&range.step!=='any'&&Number.isFinite(+range.step)&&+range.step>0)?+range.step:null;
+  let value=min+t*(max-min);
+  if(step)value=min+Math.round((value-min)/step)*step;
+  value=clamp(value,min,max);
+  range.value=String(value);
+  range.dispatchEvent(new Event('input',{bubbles:true}));
+  if(commit)range.dispatchEvent(new Event('change',{bubbles:true}));
+  return true;
+}
+// v7.59 — direct iPad drag surface for the secondary Light/Depth sliders.
+// Native <input type=range> tracking is unreliable on iPad once the controls are
+// rotated vertically, and its small native hit target makes finger use feel sticky.
+// Treat each half of the secondary capsule as the drag surface for its slider.
+// The visual range remains the source of truth; this only routes touch/Pencil input.
+function secondaryPanelRangeForPoint(panel,x,y){
+  if(!panel)return null;
+  const ranges=[...panel.querySelectorAll('input[type="range"]')];
+  if(!ranges.length)return null;
+  if(ranges.length===1)return ranges[0];
+  const r=panel.getBoundingClientRect();
+  if(r.width<1||r.height<1)return ranges[0];
+  const vertical=panel.classList.contains('ma-secondary-vertical');
+  const t=vertical?(y-r.top)/r.height:(x-r.left)/r.width;
+  return ranges[t<.5?0:1]||ranges[0];
+}
+function installSecondaryPanelDirectDrag(panel){
+  if(!panel)return;
+  let active=null;
+  const isDirectPointer=e=>e.pointerType==='touch'||e.pointerType==='pen';
+
+  panel.addEventListener('pointerdown',e=>{
+    if(!isDirectPointer(e)||active)return;
+    const range=secondaryPanelRangeForPoint(panel,e.clientX,e.clientY);
+    if(!range)return;
+
+    active={pointerId:e.pointerId,range,pointerType:e.pointerType};
+    unifiedUIPointers.add(e.pointerId);
+    if(e.pointerType==='pen'){
+      lastNativePenPointerAt=performance.now();
+      registerIPadPencil();
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    try{panel.setPointerCapture(e.pointerId);}catch(_){}
+    setSecondaryRangeFromClient(range,e.clientX,e.clientY);
+  },{capture:true,passive:false});
+
+  panel.addEventListener('pointermove',e=>{
+    if(!active||active.pointerId!==e.pointerId)return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSecondaryRangeFromClient(active.range,e.clientX,e.clientY);
+  },{capture:true,passive:false});
+
+  const finish=e=>{
+    if(!active||active.pointerId!==e.pointerId)return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSecondaryRangeFromClient(active.range,e.clientX,e.clientY,{commit:true});
+    try{panel.releasePointerCapture(e.pointerId);}catch(_){}
+    active=null;
+  };
+  panel.addEventListener('pointerup',finish,{capture:true,passive:false});
+  panel.addEventListener('pointercancel',finish,{capture:true,passive:false});
+}
+installSecondaryPanelDirectDrag(document.getElementById('sunDirPanel'));
+installSecondaryPanelDirectDrag(document.getElementById('depthRangePanel'));
+
+for(const range of secondaryPencilRanges){
+  let activePenPointer=null;
+  range.addEventListener('pointerdown',e=>{
+    if(e.pointerType!=='pen')return;
+    activePenPointer=e.pointerId;
+    lastNativePenPointerAt=performance.now();
+    registerIPadPencil();
+    unifiedUIPointers.add(e.pointerId);
+    e.preventDefault();e.stopPropagation();
+    try{range.setPointerCapture(e.pointerId);}catch(_){}
+    setSecondaryRangeFromClient(range,e.clientX,e.clientY);
+  },{capture:true,passive:false});
+  range.addEventListener('pointermove',e=>{
+    if(e.pointerType!=='pen'||activePenPointer!==e.pointerId)return;
+    e.preventDefault();e.stopPropagation();
+    setSecondaryRangeFromClient(range,e.clientX,e.clientY);
+  },{capture:true,passive:false});
+  const finish=e=>{
+    if(e.pointerType!=='pen'||activePenPointer!==e.pointerId)return;
+    e.preventDefault();e.stopPropagation();
+    setSecondaryRangeFromClient(range,e.clientX,e.clientY,{commit:true});
+    try{range.releasePointerCapture(e.pointerId);}catch(_){}
+    activePenPointer=null;
+  };
+  range.addEventListener('pointerup',finish,{capture:true,passive:false});
+  range.addEventListener('pointercancel',finish,{capture:true,passive:false});
+}
+
+function makeStylusPointerEvent(type,touch){
+  if(!touch || typeof PointerEvent!=='function')return null;
   const isUp=type==='pointerup'||type==='pointercancel';
   const pressure=Number.isFinite(+touch.force)
     ?Math.max(0,Math.min(1,+touch.force))
     :(isUp?0:.5);
-
-  const ev=new PointerEvent(type,{
+  return new PointerEvent(type,{
     bubbles:true,
     cancelable:true,
     composed:true,
@@ -10230,10 +10870,18 @@ function dispatchStylusPointer(type,touch){
     button:0,
     buttons:isUp?0:1
   });
-
-  // Always inject the Pencil gesture into the modelling surface, even when
-  // WebKit reports the TouchEvent as belonging to the held UI button.
+}
+function dispatchStylusPointer(type,touch){
+  const ev=makeStylusPointerEvent(type,touch);
+  if(!ev)return false;
   renderer.domElement.dispatchEvent(ev);
+  return true;
+}
+function dispatchStylusPointerToUI(type,touch,target){
+  if(!(target instanceof Element))return false;
+  const ev=makeStylusPointerEvent(type,touch);
+  if(!ev)return false;
+  target.dispatchEvent(ev);
   return true;
 }
 function stylusTouchesFromEvent(e){
@@ -10245,33 +10893,99 @@ function handleDocumentStylusStart(e){
   if(!stylusTouches.length)return;
 
   registerIPadPencil();
+  const nativePenAlreadyArrived=performance.now()-lastNativePenPointerAt<120;
+  let handledUI=false;
+  const modelTouches=[];
+
+  for(const t of stylusTouches){
+    const range=secondaryRangeAtPoint(t.clientX,t.clientY);
+    if(range){
+      handledUI=true;
+      stylusRangeFallbackIds.set(t.identifier,range);
+      setSecondaryRangeFromClient(range,t.clientX,t.clientY);
+      continue;
+    }
+
+    const uiHit=pencilUIControlAtPoint(t.clientX,t.clientY);
+    if(uiHit){
+      handledUI=true;
+      // If WebKit already emitted a native pen PointerEvent, only BLOCK the
+      // companion TouchEvent. Otherwise synthesize the missing PointerEvent to
+      // the real UI control — never to the modelling canvas.
+      const synthetic=!nativePenAlreadyArrived;
+      stylusUIFallbackIds.set(t.identifier,{target:uiHit.target,synthetic});
+      if(synthetic&&uiHit.actionable){
+        dispatchStylusPointerToUI('pointerdown',t,uiHit.target);
+      }
+      continue;
+    }
+
+    modelTouches.push(t);
+  }
+
+  if(handledUI)e.preventDefault();
+  if(!modelTouches.length)return;
 
   // Native pen PointerEvents normally arrive first. If one did, do not create
-  // a duplicate synthetic Pencil stream.
-  if(performance.now()-lastNativePenPointerAt<120)return;
+  // a duplicate synthetic Pencil stream for the modelling surface.
+  if(nativePenAlreadyArrived)return;
 
   e.preventDefault();
-  for(const t of stylusTouches){
+  for(const t of modelTouches){
     stylusTouchFallbackIds.add(t.identifier);
     dispatchStylusPointer('pointerdown',t);
   }
 }
 function handleDocumentStylusMove(e){
-  if(!stylusTouchFallbackIds.size)return;
+  let handled=false;
+  for(const t of [...(e.changedTouches||[])]){
+    const range=stylusRangeFallbackIds.get(t.identifier);
+    if(range){
+      handled=true;
+      setSecondaryRangeFromClient(range,t.clientX,t.clientY);
+      continue;
+    }
+    const ui=stylusUIFallbackIds.get(t.identifier);
+    if(ui){
+      handled=true;
+      if(ui.synthetic)dispatchStylusPointerToUI('pointermove',t,ui.target);
+    }
+  }
+
   const touches=[...(e.changedTouches||[])].filter(t=>stylusTouchFallbackIds.has(t.identifier));
-  if(!touches.length)return;
-  e.preventDefault();
-  for(const t of touches)dispatchStylusPointer('pointermove',t);
+  if(touches.length){
+    handled=true;
+    for(const t of touches)dispatchStylusPointer('pointermove',t);
+  }
+  if(handled)e.preventDefault();
 }
 function handleDocumentStylusEnd(e,cancel=false){
-  if(!stylusTouchFallbackIds.size)return;
-  const touches=[...(e.changedTouches||[])].filter(t=>stylusTouchFallbackIds.has(t.identifier));
-  if(!touches.length)return;
-  e.preventDefault();
-  for(const t of touches){
-    dispatchStylusPointer(cancel?'pointercancel':'pointerup',t);
-    stylusTouchFallbackIds.delete(t.identifier);
+  let handled=false;
+  for(const t of [...(e.changedTouches||[])]){
+    const range=stylusRangeFallbackIds.get(t.identifier);
+    if(range){
+      handled=true;
+      setSecondaryRangeFromClient(range,t.clientX,t.clientY,{commit:!cancel});
+      stylusRangeFallbackIds.delete(t.identifier);
+      continue;
+    }
+    const ui=stylusUIFallbackIds.get(t.identifier);
+    if(ui){
+      handled=true;
+      if(ui.synthetic)dispatchStylusPointerToUI(cancel?'pointercancel':'pointerup',t,ui.target);
+      stylusUIFallbackIds.delete(t.identifier);
+    }
   }
+
+  const touches=[...(e.changedTouches||[])].filter(t=>stylusTouchFallbackIds.has(t.identifier));
+  if(touches.length){
+    handled=true;
+    for(const t of touches){
+      dispatchStylusPointer(cancel?'pointercancel':'pointerup',t);
+      stylusTouchFallbackIds.delete(t.identifier);
+    }
+  }
+  if(handled)e.preventDefault();
 }
 document.addEventListener('touchstart',handleDocumentStylusStart,{capture:true,passive:false});
 document.addEventListener('touchmove',handleDocumentStylusMove,{capture:true,passive:false});
