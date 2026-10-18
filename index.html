@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="7.98">
+<meta name="ma-build" content="8.00">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v7.98</title>
+<title>MA 3D · v8.00</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '7.98';
+  const CURRENT_BUILD = '8.00';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -2761,10 +2761,11 @@ async function deliverExportFiles(files,title){
   return true;
 }
 
-// v7.97 — PSD export stays a genuine layered Photoshop document. Build first,
-// then share from a fresh tap. PSD sharing bypasses the generic image/share helper:
-// no title/text, no canShare gate, and no PNG/download fallback. iOS therefore sees
-// a document file whose .psd extension is preserved for Procreate import routing.
+// v7.99 — PSD export stays a genuine layered Photoshop document and now
+// shares immediately after generation. PSD sharing bypasses the generic
+// image/share helper: no title/text, no canShare gate, and no PNG/download
+// fallback. iOS therefore sees a document file whose .psd extension is
+// preserved for Procreate import routing.
 let pendingViewPsdFile=null;
 let pendingScenePsdFiles=[];
 let viewPsdBuildInProgress=false;
@@ -2795,7 +2796,7 @@ function sharePsdFileNow(file,onSuccess){
     return false;
   }
   try{
-    // Must be invoked synchronously from the fresh SHARE PSD tap.
+    // Must be invoked directly from the current PSD export/share tap.
     const result=navigator.share({files:[file]});
     Promise.resolve(result).then(()=>{
       onSuccess?.();
@@ -2828,7 +2829,7 @@ function sharePendingScenePSDs(){
     if(pendingScenePsdFiles[0]===file)pendingScenePsdFiles.shift();
     else pendingScenePsdFiles=pendingScenePsdFiles.filter(x=>x!==file);
     pendingPsdExportUIChanged();
-    showToast(pendingScenePsdFiles.length?'SCENE PSD SHARED · TAP NEXT PSD':'ALL SCENE PSDs SHARED');
+    showToast(pendingScenePsdFiles.length?'SCENE PSD SHARED · TAP SCN PSD FOR NEXT':'ALL SCENE PSDs SHARED');
   });
 }
 function captureViewRuntimeState(){
@@ -2882,7 +2883,13 @@ async function exportProcreatePSD(){
     pendingViewPsdFile=validatedPsdFile(buffer,name);
     for(const x of layers){x.canvas.width=1;x.canvas.height=1;}
     restoreViewRuntimeState(runtime);restored=true;
-    showToast('PSD READY · TAP SHARE PSD');
+    const file=pendingViewPsdFile;
+    const shared=sharePsdFileNow(file,()=>{
+      if(pendingViewPsdFile===file)pendingViewPsdFile=null;
+      pendingPsdExportUIChanged();
+      showToast('PSD SHARED');
+    });
+    if(!shared)showToast('PSD READY');
     return true;
   }catch(err){
     pendingViewPsdFile=null;
@@ -3021,8 +3028,9 @@ async function exportAllScenesMoodPSDs(){
     }
     restoreFullExportState(original);restored=true;
     pendingScenePsdFiles=[...files];
-    showToast(`${files.length} SCENE PSD${files.length===1?'':'S'} READY · TAP SHARE PSD`);
-    return true;
+    const shared=sharePendingScenePSDs();
+    if(!shared)showToast(`${files.length} SCENE PSD${files.length===1?'':'S'} READY`);
+    return shared||true;
   }catch(err){
     pendingScenePsdFiles=[];
     console.warn('Scene PSD export failed',err);window.alert('Kunne ikke eksportere scenes som PSD.');return false;
@@ -5947,9 +5955,8 @@ function syncPrimaryDockUI(){
   }
 
   if(mode==='export'){
-    // PSD export is two-step: build first, then a fresh tap shares the ready File.
-    const viewPsdLabel=viewPsdBuildInProgress?'BUILDING':pendingViewPsdFile?'SHARE PSD':'VIEW PSD';
-    const scenePsdLabel=scenePsdBuildInProgress?'BUILDING':pendingScenePsdFiles.length?'SHARE PSD':'SCN PSD';
+    const viewPsdLabel=viewPsdBuildInProgress?'BUILDING':'VIEW PSD';
+    const scenePsdLabel=scenePsdBuildInProgress?'BUILDING':'SCN PSD';
     setPrimaryDockButtonVisual(slot2,viewPsdLabel,{active:!!pendingViewPsdFile});
     setPrimaryDockButtonVisual(slot3,'SCN PNG');
     setPrimaryDockButtonVisual(slot4,scenePsdLabel,{active:!!pendingScenePsdFiles.length});
@@ -6427,7 +6434,9 @@ function setBrushSize(v){
   
   updateBrushSizeButton();
 }
-const BRUSH_SIZE_STEPS=[.05,.075,.1,.15,.2,.25,.35,.5,.75,1,1.25,1.5,2,2.5,3,4,5,6,8,10,12,16,20,24];
+// v8.00 — keyboard brush-size shortcuts use slightly coarser fixed increments.
+// The SIZE drag control remains continuous; only [ and ] use this ladder.
+const BRUSH_SIZE_STEPS=[.05,.075,.1,.15,.2,.3,.45,.65,.9,1.2,1.6,2.2,3,4,5.5,7.5,10,13,17,21,24];
 function stepBrushSize(direction){
   const current=brushSize();
   let next=current;
@@ -8622,9 +8631,9 @@ const shortcutActions=[
   {group:'Scenes',id:'sceneUpdate',label:'Update active scene',default:'',run:()=>updateActiveScene()},
 
   {group:'Output',id:'sharePNG',label:'View PNG',default:'',run:()=>shareCurrentPNG()},
-  {group:'Output',id:'exportProcreatePSD',label:'View PSD · build / share',default:'',run:()=>exportProcreatePSD()},
+  {group:'Output',id:'exportProcreatePSD',label:'View PSD',default:'',run:()=>exportProcreatePSD()},
   {group:'Output',id:'scenesPNG',label:'Scenes PNG · current mood',default:'',run:()=>exportAllScenesCurrentMoodPNGs()},
-  {group:'Output',id:'scenesPSD',label:'Scenes PSD · build / share',default:'',run:()=>exportAllScenesMoodPSDs()}
+  {group:'Output',id:'scenesPSD',label:'Scenes PSD',default:'',run:()=>exportAllScenesMoodPSDs()}
 ];
 let shortcutBindings={},shortcutCaptureActionId=null;
 function defaultShortcutBindings(){const o={};for(const a of shortcutActions)o[a.id]=a.default||'';return o;}
@@ -12662,7 +12671,7 @@ document.addEventListener('visibilitychange',async()=>{
   standaloneResumeRefreshing=true;
   try{await saveAutosaveNow();}catch(_){ }
   const u=new URL(location.href);
-  u.searchParams.set('__ma_build',window.__MA_BUILD__||'7.98');
+  u.searchParams.set('__ma_build',window.__MA_BUILD__||'8.00');
   u.searchParams.set('__ma_resume',String(Date.now()));
   location.replace(u.href);
 });
