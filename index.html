@@ -1940,7 +1940,7 @@ html.ma-draw-mobile #lookJoystick.iphoneBrushChoiceMode::after {
   </div>
   <div id="shortcutPanel">
     <div class="head"><span>SHORTCUTS</span><div class="actions"><button id="shortcutReset">RESET</button><button id="shortcutClose">CLOSE</button></div></div>
-    <div class="note">Choose LEARN, then press the keyboard or 8BitDo button you want. Modifier combinations are supported. × clears a binding.</div>
+    <div class="note">Current MA 3D functions only. ESC always cancels back toward NAVI. Choose LEARN, then press the keyboard or 8BitDo button you want. × clears a binding.</div>
     <div id="shortcutList"></div>
     <div id="shortcutCaptureHint">LEARNING… PRESS A BUTTON ON 8BITDO OR KEYBOARD.</div>
     <div id="shortcutLastInput">LAST INPUT · —</div>
@@ -2420,7 +2420,7 @@ let orbiting=false,desktopOrbitPivot=null,desktopPanStartedAt=0,lastX=0,lastY=0,
 let interaction=null,pendingMove=null,rafMove=0;
 let hoverFace=null,hoverPlane=null;
 let axisLock=null;
-let ipadStraightHeld=false,shortcutStraightHeld=false,shortcutStraightHeldCode='',shortcutStraightHeldKey='',toolBeforePlane='select';
+let ipadStraightHeld=false,toolBeforePlane='select';
 let penActive=false;
 const MA_DRAW_MOBILE=!!window.__MA_DRAW_MOBILE__;
 const MA_UNIFIED_UI=!!window.__MA_UNIFIED_UI__;
@@ -2581,7 +2581,7 @@ function openSafeFramePanel(force){
   if(safeFrameDockOpen){
     clearLatchedDrawForFunctionSwitch?.();
     if(sceneDockOpen)sceneDockOpen=false;
-    if(exportDockOpen)exportDockOpen=false;
+    if(exportDockOpen){exportDockOpen=false;clearPendingPsdExports();}
     const light=document.getElementById('sunDirPanel');
     const depth=document.getElementById('depthRangePanel');
     if(light)light.style.display='none';
@@ -2759,6 +2759,51 @@ async function deliverExportFiles(files,title){
   }
   return true;
 }
+
+// v7.96 — PSD sharing is deliberately two-step on iOS/iPadOS. Building a
+// layered PSD can take long enough that WebKit no longer considers the original
+// tap a live user gesture. Keep the finished File in memory, then require a fresh
+// tap on SHARE PSD so navigator.share() runs directly from that new gesture.
+let pendingViewPsdFile=null;
+let pendingScenePsdFiles=[];
+let viewPsdBuildInProgress=false;
+let scenePsdBuildInProgress=false;
+function pendingPsdExportUIChanged(){
+  if(typeof syncPrimaryDockUI==='function')syncPrimaryDockUI();
+}
+function clearPendingPsdExports(){
+  pendingViewPsdFile=null;
+  pendingScenePsdFiles=[];
+  viewPsdBuildInProgress=false;
+  scenePsdBuildInProgress=false;
+  pendingPsdExportUIChanged();
+}
+async function sharePendingViewPSD(){
+  const file=pendingViewPsdFile;
+  if(!file)return false;
+  const sent=await deliverExportFile(file,'MA 3D · Procreate Views');
+  if(sent){
+    pendingViewPsdFile=null;
+    pendingPsdExportUIChanged();
+    showToast('PSD SHARED');
+  }else{
+    showToast('PSD READY · TAP SHARE PSD');
+  }
+  return sent;
+}
+async function sharePendingScenePSDs(){
+  const files=[...pendingScenePsdFiles];
+  if(!files.length)return false;
+  const sent=await deliverExportFiles(files,'MA 3D · Scene Mood PSDs');
+  if(sent){
+    pendingScenePsdFiles=[];
+    pendingPsdExportUIChanged();
+    showToast('SCENE PSDs SHARED');
+  }else{
+    showToast('PSD READY · TAP SHARE PSD');
+  }
+  return sent;
+}
 function captureViewRuntimeState(){
   rememberActiveViewSettings();
   return{
@@ -2784,25 +2829,12 @@ async function renderDetachedViewCanvas(spec,targetLongEdge=4096){
   const job=buildHighResExport(targetLongEdge);
   try{return cloneCanvas(job.canvas);}finally{job.restore();}
 }
-async function exportAllViewsSeparatePNGs(){
-  const runtime=captureViewRuntimeState(),files=[];let restored=false;
-  try{
-    const suffix=safeFrameState.enabled?`-${safeFrameState.aspect.replace(':','x')}`:'';
-    for(const spec of ALL_VIEW_EXPORTS){
-      applyViewMode(spec.mode,{rememberPrevious:false});
-      const job=buildHighResExport(4096);
-      try{
-        const blob=await canvasToBlob(job.canvas,'image/png');
-        files.push(new File([blob],`MA-${spec.slug}${suffix}.png`,{type:'image/png'}));
-      }finally{job.restore();}
-    }
-    restoreViewRuntimeState(runtime);restored=true;
-    await deliverExportFiles(files,'MA 3D · All Views');
-    showToast('ALL VIEWS EXPORTED · SEPARATE PNGS');
-  }catch(err){console.warn('All views export failed',err);window.alert('Kunne ikke eksportere alle views.');}
-  finally{if(!restored)restoreViewRuntimeState(runtime);}
-}
 async function exportProcreatePSD(){
+  if(pendingViewPsdFile)return sharePendingViewPSD();
+  if(viewPsdBuildInProgress)return false;
+
+  viewPsdBuildInProgress=true;
+  pendingPsdExportUIChanged();
   const runtime=captureViewRuntimeState(),layers=[];let restored=false;
   try{
     for(const spec of ALL_VIEW_EXPORTS){
@@ -2820,15 +2852,21 @@ async function exportProcreatePSD(){
     const psd={width,height,canvas:workspace,children};
     const buffer=writePsd(psd,{trimImageData:true,noBackground:true,generateThumbnail:false});
     const name=`MA-Procreate-views${safeFrameState.enabled?'-'+safeFrameState.aspect.replace(':','x'):''}.psd`;
-    const file=new File([buffer],name,{type:'image/vnd.adobe.photoshop'});
+    pendingViewPsdFile=new File([buffer],name,{type:'image/vnd.adobe.photoshop'});
     for(const x of layers){x.canvas.width=1;x.canvas.height=1;}
     restoreViewRuntimeState(runtime);restored=true;
-    await deliverExportFile(file,'MA 3D · Procreate Views');
-    showToast('PROCREATE PSD EXPORTED · 4 LAYERS');
-  }catch(err){console.warn('PSD export failed',err);window.alert('Kunne ikke lave Procreate PSD.');}
-  finally{
+    showToast('PSD READY · TAP SHARE PSD');
+    return true;
+  }catch(err){
+    pendingViewPsdFile=null;
+    console.warn('PSD export failed',err);
+    window.alert('Kunne ikke lave Procreate PSD.');
+    return false;
+  }finally{
+    viewPsdBuildInProgress=false;
     for(const x of layers){if(x.canvas.width!==1||x.canvas.height!==1){x.canvas.width=1;x.canvas.height=1;}}
     if(!restored)restoreViewRuntimeState(runtime);
+    pendingPsdExportUIChanged();
   }
 }
 
@@ -2922,8 +2960,13 @@ async function exportAllScenesCurrentMoodPNGs(){
   }finally{if(!restored)restoreFullExportState(original);}
 }
 async function exportAllScenesMoodPSDs(){
+  if(pendingScenePsdFiles.length)return sharePendingScenePSDs();
+  if(scenePsdBuildInProgress)return false;
+
   const scenes=sceneExportList();
   if(!scenes.length){showToast('NO SAVED SCENES');return false;}
+  scenePsdBuildInProgress=true;
+  pendingPsdExportUIChanged();
   const original=captureFullExportState();
   const files=[];let restored=false;
   try{
@@ -2950,12 +2993,17 @@ async function exportAllScenesMoodPSDs(){
       }
     }
     restoreFullExportState(original);restored=true;
-    await deliverExportFiles(files,'MA 3D · Scene Mood PSDs');
-    showToast(`${files.length} SCENE PSD${files.length===1?'':'S'} · 4 MOOD LAYERS`);
+    pendingScenePsdFiles=[...files];
+    showToast(`${files.length} SCENE PSD${files.length===1?'':'S'} READY · TAP SHARE PSD`);
     return true;
   }catch(err){
+    pendingScenePsdFiles=[];
     console.warn('Scene PSD export failed',err);window.alert('Kunne ikke eksportere scenes som PSD.');return false;
-  }finally{if(!restored)restoreFullExportState(original);}
+  }finally{
+    scenePsdBuildInProgress=false;
+    if(!restored)restoreFullExportState(original);
+    pendingPsdExportUIChanged();
+  }
 }
 
 syncSafeFrameUI();
@@ -5738,6 +5786,7 @@ function setExportDockOpen(open){
     if(light)light.style.display='none';
     if(depth)depth.style.display='none';
   }else{
+    clearPendingPsdExports();
     syncUnifiedLookSettings?.();
   }
   syncExportDockVisuals();
@@ -5788,7 +5837,7 @@ function setSceneDockOpen(open){
   if(sceneDockOpen){
     clearLatchedDrawForFunctionSwitch?.();
     maMenuDockOpen=false;
-    if(exportDockOpen)exportDockOpen=false;
+    if(exportDockOpen){exportDockOpen=false;clearPendingPsdExports();}
     if(safeFrameDockOpen)openSafeFramePanel(false);
   }
   syncSceneDockVisuals();
@@ -5823,7 +5872,7 @@ function setMAMenuDockOpen(open){
   if(maMenuDockOpen){
     clearLatchedDrawForFunctionSwitch?.();
     if(sceneDockOpen)sceneDockOpen=false;
-    if(exportDockOpen)exportDockOpen=false;
+    if(exportDockOpen){exportDockOpen=false;clearPendingPsdExports();}
     if(safeFrameDockOpen)openSafeFramePanel(false);
     const light=document.getElementById('sunDirPanel');
     const depth=document.getElementById('depthRangePanel');
@@ -5871,10 +5920,12 @@ function syncPrimaryDockUI(){
   }
 
   if(mode==='export'){
-    // Physical order: VIEW PNG · VIEW PSD · SCN PNG · SCN PSD · empty · empty.
-    setPrimaryDockButtonVisual(slot2,'VIEW PSD');
+    // PSD export is two-step: build first, then a fresh tap shares the ready File.
+    const viewPsdLabel=viewPsdBuildInProgress?'BUILDING':pendingViewPsdFile?'SHARE PSD':'VIEW PSD';
+    const scenePsdLabel=scenePsdBuildInProgress?'BUILDING':pendingScenePsdFiles.length?'SHARE PSD':'SCN PSD';
+    setPrimaryDockButtonVisual(slot2,viewPsdLabel,{active:!!pendingViewPsdFile});
     setPrimaryDockButtonVisual(slot3,'SCN PNG');
-    setPrimaryDockButtonVisual(slot4,'SCN PSD');
+    setPrimaryDockButtonVisual(slot4,scenePsdLabel,{active:!!pendingScenePsdFiles.length});
     setPrimaryDockButtonVisual(slot5,'');
     syncExportDockVisuals();
     return;
@@ -7391,7 +7442,7 @@ function updateDraw(e){
       return;
     }
 
-    if(e.shiftKey||ipadStraightHeld||shortcutStraightHeld){
+    if(e.shiftKey||ipadStraightHeld){
       // Shift on desktop or holding one finger on iPad temporarily turns the current brush section into a straight segment.
       // The anchor is the point where Shift was first engaged, so Shift can be used
       // either for an entire stroke or only for one straight section inside a stroke.
@@ -8442,51 +8493,82 @@ function deleteAllGeometry(){
   showToast('ALL GEOMETRY DELETED');
 }
 
-const SHORTCUT_STORAGE_KEY='MA3D_SHORTCUTS_V1';
+const SHORTCUT_STORAGE_KEY='MA3D_SHORTCUTS_V2';
+function shortcutChooseBrush(kind){
+  const keepErase=currentAppMode()==='draw'&&drawHoldAction==='erase';
+  setMobileDrawKind(kind);
+  armDesktopDraw(keepErase);
+}
+function shortcutActivateSelect(){
+  clearLatchedDrawForFunctionSwitch?.();
+  activateSelectMode();
+}
+function shortcutActivateTransform(kind){
+  clearLatchedDrawForFunctionSwitch?.();
+  if(!selectModeActive)activateSelectMode();
+  if(!selectedMasses().length){showToast('SELECT OBJECT FIRST');return;}
+
+  if(kind==='move'){
+    if(transformHoldMode)endSelectionTransformHold(false);
+    moveArmed=true;
+    desktopTransformArmed=false;
+    selectTransformMode='move';
+    setSelectionGizmosEnabled(false);
+    finalizeRotatePivot(false);
+    updateMobileDrawUI();
+    showToast('MOVE · ACTIVE');
+    return;
+  }
+
+  beginSelectionTransformHold(kind,{pointerType:'keyboard',pointerId:null});
+  if(transformHoldMode===kind){
+    desktopTransformArmed=true;
+    transformHoldPointerId=null;
+    transformHoldPointerType='keyboard';
+    updateMobileDrawUI();
+    showToast(`${kind.toUpperCase()} · ACTIVE`);
+  }
+}
 const shortcutActions=[
-  {group:'Tools',id:'toolSelect',label:'Select / Move',default:'Escape',run:()=>setTool('select')},
-  {group:'Tools',id:'toolCurve',label:'Curve',default:'KeyD',run:()=>setTool('draw')},
-  {group:'Tools',id:'toolBoxBrush',label:'Box Brush',default:'KeyK',run:()=>setTool('boxbrush')},
-  {group:'Tools',id:'toolPolyline',label:'Polyline',default:'KeyL',run:()=>setTool('polyline')},
-  {group:'Tools',id:'toolBox',label:'Box',default:'KeyB',run:()=>setTool('box')},
-  {group:'Tools',id:'toolCircle',label:'Circle',default:'KeyC',run:()=>setTool('circle')},
-  {group:'Tools',id:'toolSphere',label:'Sphere',default:'KeyH',run:()=>setTool('sphere')},
-  {group:'Tools',id:'toolMove',label:'Select / Move · legacy Move shortcut',default:'KeyM',run:()=>setTool('select')},
-  {group:'Tools',id:'toolModify',label:'Modify corner / edge',default:'',run:()=>setTool('modify')},
-  {group:'Tools',id:'toolRotate',label:'Rotate',default:'KeyR',run:()=>setTool('rotate')},
-  {group:'Tools',id:'toolScale',label:'Scale',default:'',run:()=>setTool('scale')},
-  {group:'Tools',id:'toolBrushCycle',label:'Brush · cycle Curve / Box Brush',default:'',run:()=>cycleToolFamily('brush')},
-  {group:'Tools',id:'toolProfileCycle',label:'2D Outline · cycle Polyline / Box / Circle / Sphere',default:'',run:()=>cycleToolFamily('profile')},
-  {group:'Editing',id:'undo',label:'Undo',default:'Ctrl+KeyZ',run:()=>undo()},
-  {group:'Editing',id:'redo',label:'Redo',default:'Ctrl+Shift+KeyZ',run:()=>redo()},
-  {group:'Editing',id:'delete',label:'Delete selection',default:'Delete',run:()=>{if(selectedMasses().length)deleteSelected();}},
-  {group:'Editing',id:'deleteAll',label:'Delete all geometry',default:'',run:()=>deleteAllGeometry()},
-  {group:'Editing',id:'duplicate',label:'Duplicate selection',default:'Ctrl+KeyD',run:()=>duplicateSelected()},
-  {group:'Editing',id:'group',label:'Group',default:'Ctrl+KeyG',run:()=>groupSelected()},
-  {group:'Editing',id:'ungroup',label:'Ungroup',default:'Ctrl+Shift+KeyG',run:()=>ungroupSelected()},
-  {group:'Drawing',id:'toggleAddCut',label:'Toggle Add / Cut',default:'Alt',run:()=>setDrawMode(drawMode==='add'?'cut':'add')},
-  {group:'Drawing',id:'brushSizeMode',label:'Brush Size drag mode',default:'KeyF',run:()=>beginBrushSizing()},
-  {group:'Drawing',id:'brushBigger',label:'Brush Size +',default:'BracketRight',run:()=>{setBrushSize(brushSize()*1.15);scheduleAutosave();}},
-  {group:'Drawing',id:'brushSmaller',label:'Brush Size −',default:'BracketLeft',run:()=>{setBrushSize(brushSize()/1.15);scheduleAutosave();}},
-  {group:'Drawing',id:'holdStraight',label:'Hold Straight · Curve / Box Brush',default:'',run:()=>{}},
-  {group:'Drawing',id:'hoverWorkplane',label:'Hold + Pencil · pick Surface / Ground',default:'',run:()=>lockWorkplaneFromHover()},
-  {group:'Drawing',id:'groundPlane',label:'Ground workplane',default:'KeyG',run:()=>setGroundPlane()},
-  {group:'Drawing',id:'viewPlane',label:'View workplane · open / close',default:'KeyV',run:()=>toggleViewWorkplanePanel()},
-  {group:'View',id:'viewWorkspace',label:'Workspace view',default:'Digit1',run:()=>{applyViewMode('workspace');markSceneViewDirty();scheduleAutosave();}},
-  {group:'View',id:'viewMasse',label:'Masse view',default:'Digit2',run:()=>{applyViewMode('notan');markSceneViewDirty();scheduleAutosave();}},
-  {group:'View',id:'viewNotan',label:'Notan view',default:'Digit3',run:()=>{applyViewMode('shadow');markSceneViewDirty();scheduleAutosave();}},
-  {group:'View',id:'viewDepth',label:'Depth view',default:'',run:()=>{applyViewMode('depth');markSceneViewDirty();scheduleAutosave();}},
-  {group:'View',id:'viewCycle',label:'Cycle Workspace / Masse / Notan / Depth',default:'',run:()=>cycleViewMode()},
-  {group:'View',id:'toggleSafeFrame',label:'Safe Frame on / off',default:'',run:()=>{safeFrameState.enabled=!safeFrameState.enabled;updateSafeFrame();markSceneViewDirty();scheduleAutosave();}},
-  {group:'View',id:'toggleOutlines',label:'Outlines on / off',default:'',run:()=>{outlinesEnabled=!outlinesEnabled;updateAllMassVisuals();const b=document.getElementById('outlines');if(b){b.textContent='◇';b.classList.toggle('activeState',outlinesEnabled);}}},
-  {group:'Scenes',id:'scenePrevious',label:'Previous Scene',default:'',run:()=>cycleSavedScene(-1)},
-  {group:'Scenes',id:'sceneNext',label:'Next Scene',default:'',run:()=>cycleSavedScene(1)},
-  {group:'Scenes',id:'sceneAdd',label:'Save new Scene',default:'',run:()=>addScene()},
-  {group:'Scenes',id:'sceneUpdate',label:'Update active Scene',default:'',run:()=>updateActiveScene()},
-  {group:'Output',id:'sharePNG',label:'Share PNG',default:'',run:()=>shareCurrentPNG()},
-  {group:'Output',id:'exportPNG',label:'Export PNG',default:'',run:()=>exportCurrentPNG()},
-  {group:'Output',id:'exportAllViews',label:'Export All Views · Separate PNGs',default:'',run:()=>exportAllViewsSeparatePNGs()},
-  {group:'Output',id:'exportProcreatePSD',label:'Procreate PSD · 4 View Layers',default:'',run:()=>exportProcreatePSD()}
+  {group:'Mode',id:'select',label:'Select',default:'',run:()=>shortcutActivateSelect()},
+  {group:'Mode',id:'add',label:'Add',default:'KeyA',run:()=>armDesktopDraw(false)},
+  {group:'Mode',id:'erase',label:'Erase',default:'KeyE',run:()=>armDesktopDraw(true)},
+  {group:'Mode',id:'move',label:'Move selection',default:'KeyM',run:()=>shortcutActivateTransform('move')},
+  {group:'Mode',id:'scale',label:'Scale selection',default:'KeyS',run:()=>shortcutActivateTransform('scale')},
+  {group:'Mode',id:'rotate',label:'Rotate selection',default:'KeyR',run:()=>shortcutActivateTransform('rotate')},
+
+  {group:'Brush',id:'brushShape',label:'Shape',default:'KeyD',run:()=>shortcutChooseBrush('shape')},
+  {group:'Brush',id:'brushRect',label:'Rect',default:'',run:()=>shortcutChooseBrush('rect')},
+  {group:'Brush',id:'brushSquare',label:'Square',default:'KeyK',run:()=>shortcutChooseBrush('boxbrush')},
+  {group:'Brush',id:'brushRound',label:'Round',default:'',run:()=>shortcutChooseBrush('roundbrush')},
+  {group:'Brush',id:'brushCircle',label:'Circle',default:'KeyC',run:()=>shortcutChooseBrush('circle')},
+  {group:'Brush',id:'brushPoly',label:'Poly',default:'KeyL',run:()=>shortcutChooseBrush('polyline')},
+  {group:'Brush',id:'brushSizeMode',label:'Brush Size drag',default:'KeyF',run:()=>beginBrushSizing()},
+  {group:'Brush',id:'brushBigger',label:'Brush Size +',default:'BracketRight',run:()=>{setBrushSize(brushSize()*1.15);scheduleAutosave();}},
+  {group:'Brush',id:'brushSmaller',label:'Brush Size −',default:'BracketLeft',run:()=>{setBrushSize(brushSize()/1.15);scheduleAutosave();}},
+
+  {group:'Edit',id:'undo',label:'Undo',default:'Ctrl+KeyZ',run:()=>undo()},
+  {group:'Edit',id:'redo',label:'Redo',default:'Ctrl+Shift+KeyZ',run:()=>redo()},
+  {group:'Edit',id:'delete',label:'Delete selection',default:'Delete',run:()=>{if(selectedMasses().length)deleteSelected();}},
+  {group:'Edit',id:'duplicate',label:'Duplicate selection',default:'Ctrl+KeyD',run:()=>duplicateSelected()},
+  {group:'Edit',id:'group',label:'Group',default:'Ctrl+KeyG',run:()=>groupSelected()},
+  {group:'Edit',id:'ungroup',label:'Ungroup',default:'Ctrl+Shift+KeyG',run:()=>ungroupSelected()},
+
+  {group:'Mood',id:'viewWorkspace',label:'Workspace',default:'Digit1',run:()=>{applyViewMode('workspace');markSceneViewDirty();scheduleAutosave();}},
+  {group:'Mood',id:'viewMasse',label:'Masse',default:'Digit2',run:()=>{applyViewMode('notan');markSceneViewDirty();scheduleAutosave();}},
+  {group:'Mood',id:'viewLight',label:'Light',default:'Digit3',run:()=>{applyViewMode('shadow');markSceneViewDirty();scheduleAutosave();}},
+  {group:'Mood',id:'viewDepth',label:'Depth',default:'Digit4',run:()=>{applyViewMode('depth');markSceneViewDirty();scheduleAutosave();}},
+  {group:'Mood',id:'toggleSafeFrame',label:'Safe Frame on / off',default:'',run:()=>toggleSafeFrame()},
+
+  {group:'Scenes',id:'scenePrevious',label:'Previous scene',default:'',run:()=>cycleSavedScene(-1)},
+  {group:'Scenes',id:'sceneNext',label:'Next scene',default:'',run:()=>cycleSavedScene(1)},
+  {group:'Scenes',id:'sceneAdd',label:'Save next empty scene',default:'',run:()=>addScene()},
+  {group:'Scenes',id:'sceneUpdate',label:'Update active scene',default:'',run:()=>updateActiveScene()},
+
+  {group:'Output',id:'sharePNG',label:'View PNG',default:'',run:()=>shareCurrentPNG()},
+  {group:'Output',id:'exportProcreatePSD',label:'View PSD · build / share',default:'',run:()=>exportProcreatePSD()},
+  {group:'Output',id:'scenesPNG',label:'Scenes PNG · current mood',default:'',run:()=>exportAllScenesCurrentMoodPNGs()},
+  {group:'Output',id:'scenesPSD',label:'Scenes PSD · build / share',default:'',run:()=>exportAllScenesMoodPSDs()}
 ];
 let shortcutBindings={},shortcutCaptureActionId=null;
 function defaultShortcutBindings(){const o={};for(const a of shortcutActions)o[a.id]=a.default||'';return o;}
@@ -8610,27 +8692,6 @@ function pickWorkplaneAt(x,y){
   else setGroundPlane();
   const back=toolBeforePlane||'select';setTool(back);
 }
-// Assignable momentary STRAIGHT modifier for Curve / Box Brush.
-// This is separate from the existing one-finger iPad modifier so either input can
-// be released independently without cancelling the other.
-function beginShortcutStraightHold(e){
-  shortcutStraightHeld=true;
-  shortcutStraightHeldCode=e.code||'';
-  shortcutStraightHeldKey=e.key||'';
-  if(interaction?.kind==='draw'&&(interaction.tool==='draw'||interaction.tool==='boxbrush'))showInference('STRAIGHT');
-}
-function endShortcutStraightHold(){
-  shortcutStraightHeld=false;
-  shortcutStraightHeldCode='';
-  shortcutStraightHeldKey='';
-  if(interaction?.kind==='draw'&&(interaction.tool==='draw'||interaction.tool==='boxbrush'))showInference('');
-}
-
-let workplanePickHeld=false;
-let workplanePickHeldCode='';
-let workplanePickHeldKey='';
-let workplanePickUsed=false;
-
 function pickGuideWorkplaneAt(x,y,announce=true){
   // Exact pointer-position fallback for iPads without Pencil hover:
   // hold the assigned controller key, then tap the wanted face with Pencil.
@@ -8656,31 +8717,6 @@ function lockWorkplaneFromHover(){
   // Original hover workflow remains intact where Pencil hover exists.
   if(interaction||transformDragging)return;
   pickGuideWorkplaneAt(lastPointerClient.x,lastPointerClient.y,false);
-}
-
-function beginWorkplanePickHold(e){
-  if(interaction||transformDragging)return;
-  workplanePickHeld=true;
-  workplanePickUsed=false;
-  workplanePickHeldCode=e.code||'';
-  workplanePickHeldKey=e.key||'';
-  // Preserve the existing hover workflow immediately; on non-hover iPads the
-  // subsequent Pencil tap simply replaces this with the exact tapped face.
-  lockWorkplaneFromHover();
-  showInference('PICK SURFACE');
-  if(e.pointerType==='pen')setSelectionGizmosEnabled(false);
-}
-
-function endWorkplanePickHold(){
-  workplanePickHeld=false;
-  workplanePickHeldCode='';
-  workplanePickHeldKey='';
-  workplanePickUsed=false;
-  showInference('');
-  if(!touchPointers.size&&!transformDragging){
-    if(MA_UNIFIED_UI)syncRotateGizmo();
-    else transform.enabled=true;
-  }
 }
 
 function cancelInteraction(restore=false){
@@ -12428,7 +12464,6 @@ window.addEventListener('keydown',e=>{
     const pure=findShortcutAction(e);
     if(pure){
       ctrlWorkplaneTap=false;e.preventDefault();
-      if(pure.id==='holdStraight'){if(!e.repeat)beginShortcutStraightHold(e);return;}
       if(!e.repeat)pure.run();
     }
     return;
@@ -12470,37 +12505,12 @@ window.addEventListener('keydown',e=>{
   if(action){
     e.preventDefault();
 
-    // Straight is momentary: hold the assigned button while drawing Curve / Box Brush.
-    if(action.id==='holdStraight'){
-      if(!e.repeat)beginShortcutStraightHold(e);
-      return;
-    }
-
-    // Workplane shortcut is momentary: hold button + Pencil tap.
-    // On hover-capable devices the key press itself still locks the hovered face.
-    if(action.id==='hoverWorkplane'){
-      if(!e.repeat)beginWorkplanePickHold(e);
-      return;
-    }
-
     // Avoid repeated destructive/toggle commands if a controller holds the key down.
     if(e.repeat&&!['brushBigger','brushSmaller'].includes(action.id))return;
     action.run();return;
   }
 });
 window.addEventListener('keyup',e=>{
-  if(shortcutStraightHeld){
-    const sameCode=!!shortcutStraightHeldCode&&e.code===shortcutStraightHeldCode;
-    const sameKey=!!shortcutStraightHeldKey&&e.key===shortcutStraightHeldKey;
-    if(sameCode||sameKey)endShortcutStraightHold();
-  }
-
-  if(workplanePickHeld){
-    const sameCode=!!workplanePickHeldCode&&e.code===workplanePickHeldCode;
-    const sameKey=!!workplanePickHeldKey&&e.key===workplanePickHeldKey;
-    if(sameCode||sameKey)endWorkplanePickHold();
-  }
-
   if(e.key!=='Control')return;
   const doPlace=ctrlWorkplaneTap;
   ctrlWorkplaneTap=false;
@@ -12508,10 +12518,6 @@ window.addEventListener('keyup',e=>{
   e.preventDefault();
   lockWorkplaneFromHover();
 });
-
-// Avoid a stuck hold state if iPadOS suspends the Home Screen app while a
-// controller button is down.
-window.addEventListener('blur',()=>{if(workplanePickHeld)endWorkplanePickHold();if(shortcutStraightHeld)endShortcutStraightHold();});
 
 function resizeViewportRenderer(){
   const s=viewportRenderSize();
