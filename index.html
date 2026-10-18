@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="7.44">
+<meta name="ma-build" content="7.98">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v7.53</title>
+<title>MA 3D · v7.98</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '7.44';
+  const CURRENT_BUILD = '7.98';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -2457,6 +2457,7 @@ let ipadInputModePreference=MA_IS_IPAD?'pencil':'auto'; // auto | pencil | finge
 let pencilSelectManuallyOff=false;
 let pencilDrawButtonPress=null;
 const PENCIL_DRAW_MENU_HOLD_MS=60;
+const PENCIL_DRAW_TOGGLE_HOLD_MS=220;
 const touchPointers=new Map();let touchNavState=null,touchGesture=null,touchOrbitPivot=null,touchNavRAF=0,touchPanScale=0;
 
 const ui={
@@ -2760,10 +2761,10 @@ async function deliverExportFiles(files,title){
   return true;
 }
 
-// v7.96 — PSD sharing is deliberately two-step on iOS/iPadOS. Building a
-// layered PSD can take long enough that WebKit no longer considers the original
-// tap a live user gesture. Keep the finished File in memory, then require a fresh
-// tap on SHARE PSD so navigator.share() runs directly from that new gesture.
+// v7.97 — PSD export stays a genuine layered Photoshop document. Build first,
+// then share from a fresh tap. PSD sharing bypasses the generic image/share helper:
+// no title/text, no canShare gate, and no PNG/download fallback. iOS therefore sees
+// a document file whose .psd extension is preserved for Procreate import routing.
 let pendingViewPsdFile=null;
 let pendingScenePsdFiles=[];
 let viewPsdBuildInProgress=false;
@@ -2778,31 +2779,57 @@ function clearPendingPsdExports(){
   scenePsdBuildInProgress=false;
   pendingPsdExportUIChanged();
 }
-async function sharePendingViewPSD(){
+function validatedPsdFile(buffer,name){
+  const bytes=buffer instanceof Uint8Array?buffer:new Uint8Array(buffer);
+  if(bytes.length<4||bytes[0]!==0x38||bytes[1]!==0x42||bytes[2]!==0x50||bytes[3]!==0x53){
+    throw new Error('Invalid PSD signature');
+  }
+  // application/octet-stream prevents iOS from routing the Photoshop document
+  // through the image-only share path. The .psd extension remains authoritative.
+  return new File([bytes],name,{type:'application/octet-stream'});
+}
+function sharePsdFileNow(file,onSuccess){
+  if(!file)return false;
+  if(typeof navigator.share!=='function'){
+    showToast('PSD READY · SHARE UNAVAILABLE');
+    return false;
+  }
+  try{
+    // Must be invoked synchronously from the fresh SHARE PSD tap.
+    const result=navigator.share({files:[file]});
+    Promise.resolve(result).then(()=>{
+      onSuccess?.();
+    }).catch(err=>{
+      if(err?.name!=='AbortError'){
+        console.warn('PSD share failed',err);
+        showToast('PSD SHARE FAILED · FILE KEPT READY');
+      }
+    });
+    return true;
+  }catch(err){
+    console.warn('PSD share failed',err);
+    showToast('PSD SHARE FAILED · FILE KEPT READY');
+    return false;
+  }
+}
+function sharePendingViewPSD(){
   const file=pendingViewPsdFile;
   if(!file)return false;
-  const sent=await deliverExportFile(file,'MA 3D · Procreate Views');
-  if(sent){
-    pendingViewPsdFile=null;
+  return sharePsdFileNow(file,()=>{
+    if(pendingViewPsdFile===file)pendingViewPsdFile=null;
     pendingPsdExportUIChanged();
     showToast('PSD SHARED');
-  }else{
-    showToast('PSD READY · TAP SHARE PSD');
-  }
-  return sent;
+  });
 }
-async function sharePendingScenePSDs(){
-  const files=[...pendingScenePsdFiles];
-  if(!files.length)return false;
-  const sent=await deliverExportFiles(files,'MA 3D · Scene Mood PSDs');
-  if(sent){
-    pendingScenePsdFiles=[];
+function sharePendingScenePSDs(){
+  const file=pendingScenePsdFiles[0];
+  if(!file)return false;
+  return sharePsdFileNow(file,()=>{
+    if(pendingScenePsdFiles[0]===file)pendingScenePsdFiles.shift();
+    else pendingScenePsdFiles=pendingScenePsdFiles.filter(x=>x!==file);
     pendingPsdExportUIChanged();
-    showToast('SCENE PSDs SHARED');
-  }else{
-    showToast('PSD READY · TAP SHARE PSD');
-  }
-  return sent;
+    showToast(pendingScenePsdFiles.length?'SCENE PSD SHARED · TAP NEXT PSD':'ALL SCENE PSDs SHARED');
+  });
 }
 function captureViewRuntimeState(){
   rememberActiveViewSettings();
@@ -2852,7 +2879,7 @@ async function exportProcreatePSD(){
     const psd={width,height,canvas:workspace,children};
     const buffer=writePsd(psd,{trimImageData:true,noBackground:true,generateThumbnail:false});
     const name=`MA-Procreate-views${safeFrameState.enabled?'-'+safeFrameState.aspect.replace(':','x'):''}.psd`;
-    pendingViewPsdFile=new File([buffer],name,{type:'image/vnd.adobe.photoshop'});
+    pendingViewPsdFile=validatedPsdFile(buffer,name);
     for(const x of layers){x.canvas.width=1;x.canvas.height=1;}
     restoreViewRuntimeState(runtime);restored=true;
     showToast('PSD READY · TAP SHARE PSD');
@@ -2987,7 +3014,7 @@ async function exportAllScenesMoodPSDs(){
         const psd={width,height,canvas:workspace,children};
         const buffer=writePsd(psd,{trimImageData:true,noBackground:true,generateThumbnail:false});
         const safeSuffix=safeFrameState.enabled?`-${safeFrameState.aspect.replace(':','x')}`:'';
-        files.push(new File([buffer],`MA-S${scene.id}-moods${safeSuffix}.psd`,{type:'image/vnd.adobe.photoshop'}));
+        files.push(validatedPsdFile(buffer,`MA-S${scene.id}-moods${safeSuffix}.psd`));
       }finally{
         for(const x of layers){x.canvas.width=1;x.canvas.height=1;}
       }
@@ -6400,6 +6427,21 @@ function setBrushSize(v){
   
   updateBrushSizeButton();
 }
+const BRUSH_SIZE_STEPS=[.05,.075,.1,.15,.2,.25,.35,.5,.75,1,1.25,1.5,2,2.5,3,4,5,6,8,10,12,16,20,24];
+function stepBrushSize(direction){
+  const current=brushSize();
+  let next=current;
+  if(direction>0){
+    next=BRUSH_SIZE_STEPS.find(v=>v>current+1e-6)??BRUSH_SIZE_STEPS[BRUSH_SIZE_STEPS.length-1];
+  }else{
+    for(let i=BRUSH_SIZE_STEPS.length-1;i>=0;i--){
+      if(BRUSH_SIZE_STEPS[i]<current-1e-6){next=BRUSH_SIZE_STEPS[i];break;}
+    }
+  }
+  setBrushSize(next);
+  scheduleAutosave();
+  showToast(`SIZE · ${Number(next.toFixed(3))}`);
+}
 function hideBrushSizer(){ui.brushSizer.style.display='none';}
 function beginBrushSizing(){
   if(interaction||transformDragging)return;
@@ -8503,6 +8545,20 @@ function shortcutActivateSelect(){
   clearLatchedDrawForFunctionSwitch?.();
   activateSelectMode();
 }
+function shortcutToggleDraw(erase=false){
+  const wanted=erase?'erase':'add';
+  const sameTool=currentAppMode()==='draw'&&desktopShapeArmed&&!drawModeHeld&&drawHoldAction===wanted;
+  if(sameTool){
+    if(MA_IS_IPAD)deactivatePencilDraw();
+    else{
+      clearLatchedDrawForFunctionSwitch();
+      updateMobileDrawUI();
+      showToast('NAVI');
+    }
+    return;
+  }
+  armDesktopDraw(erase);
+}
 function shortcutActivateTransform(kind){
   clearLatchedDrawForFunctionSwitch?.();
   if(!selectModeActive)activateSelectMode();
@@ -8531,8 +8587,8 @@ function shortcutActivateTransform(kind){
 }
 const shortcutActions=[
   {group:'Mode',id:'select',label:'Select',default:'',run:()=>shortcutActivateSelect()},
-  {group:'Mode',id:'add',label:'Add',default:'KeyA',run:()=>armDesktopDraw(false)},
-  {group:'Mode',id:'erase',label:'Erase',default:'KeyE',run:()=>armDesktopDraw(true)},
+  {group:'Mode',id:'add',label:'Add · toggle',default:'KeyA',run:()=>shortcutToggleDraw(false)},
+  {group:'Mode',id:'erase',label:'Erase · toggle',default:'KeyE',run:()=>shortcutToggleDraw(true)},
   {group:'Mode',id:'move',label:'Move selection',default:'KeyM',run:()=>shortcutActivateTransform('move')},
   {group:'Mode',id:'scale',label:'Scale selection',default:'KeyS',run:()=>shortcutActivateTransform('scale')},
   {group:'Mode',id:'rotate',label:'Rotate selection',default:'KeyR',run:()=>shortcutActivateTransform('rotate')},
@@ -8544,8 +8600,8 @@ const shortcutActions=[
   {group:'Brush',id:'brushCircle',label:'Circle',default:'KeyC',run:()=>shortcutChooseBrush('circle')},
   {group:'Brush',id:'brushPoly',label:'Poly',default:'KeyL',run:()=>shortcutChooseBrush('polyline')},
   {group:'Brush',id:'brushSizeMode',label:'Brush Size drag',default:'KeyF',run:()=>beginBrushSizing()},
-  {group:'Brush',id:'brushBigger',label:'Brush Size +',default:'BracketRight',run:()=>{setBrushSize(brushSize()*1.15);scheduleAutosave();}},
-  {group:'Brush',id:'brushSmaller',label:'Brush Size −',default:'BracketLeft',run:()=>{setBrushSize(brushSize()/1.15);scheduleAutosave();}},
+  {group:'Brush',id:'brushBigger',label:'Brush Size + · step',default:'BracketRight',run:()=>stepBrushSize(1)},
+  {group:'Brush',id:'brushSmaller',label:'Brush Size − · step',default:'BracketLeft',run:()=>stepBrushSize(-1)},
 
   {group:'Edit',id:'undo',label:'Undo',default:'Ctrl+KeyZ',run:()=>undo()},
   {group:'Edit',id:'redo',label:'Redo',default:'Ctrl+Shift+KeyZ',run:()=>redo()},
@@ -10358,7 +10414,7 @@ function setupDrawHoldButton(id,erase=false){
         if(pencilDrawButtonPress!==press)return;
         press.held=true;
         beginDrawModeHold(press.event,erase);
-      },PENCIL_DRAW_MENU_HOLD_MS);
+      },press.toggleOff?PENCIL_DRAW_TOGGLE_HOLD_MS:PENCIL_DRAW_MENU_HOLD_MS);
       try{btn.setPointerCapture?.(e.pointerId);}catch(_){}
       return;
     }
@@ -12376,6 +12432,14 @@ window.addEventListener('pointercancel',e=>{
       if(MA_IS_IPAD&&ipadInputModePreference==='finger'){penActive=false;return;}
       penActive=false;
 
+      // POLY is a multi-tap tool. iPadOS can report a normal Pencil lift as
+      // pointercancel; keep the in-progress polygon alive so the next Pencil tap
+      // adds the next vertex instead of silently discarding the whole shape.
+      if(interaction?.kind==='polyline'){
+        updateMobileDrawUI();
+        return;
+      }
+
       if(interaction?.kind==='draw'&&interaction.pointerId===e.pointerId){
         const st=interaction;
         const pointCount=st.shapeFillMode
@@ -12598,7 +12662,7 @@ document.addEventListener('visibilitychange',async()=>{
   standaloneResumeRefreshing=true;
   try{await saveAutosaveNow();}catch(_){ }
   const u=new URL(location.href);
-  u.searchParams.set('__ma_build',window.__MA_BUILD__||'7.61');
+  u.searchParams.set('__ma_build',window.__MA_BUILD__||'7.98');
   u.searchParams.set('__ma_resume',String(Date.now()));
   location.replace(u.href);
 });
