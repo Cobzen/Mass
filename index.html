@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.16">
+<meta name="ma-build" content="8.18">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.16</title>
+<title>MA 3D · v8.18</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.16';
+  const CURRENT_BUILD = '8.18';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -1083,15 +1083,16 @@ html.ma-library-open #maBottomDock, html.ma-library-open #mainMenuButton, html.m
   }
 }
 
-/* v8.14 — iPhone keeps the classic fixed-bottom portrait dock.
-   The iPad-style movable perimeter dock is enabled only in landscape. */
+/* v8.17 — iPhone dock is fixed in both orientations. Portrait uses the
+   classic bottom dock; landscape uses a vertical dock on the right. */
 html.ma-iphone{
   --ma-control-size:52px;
   --ma-control-gap:4px;
   --ma-side-dock-pad:4px;
 }
 
-/* Keep the iPhone hamburger compact, but let JS place it beside the dock. */
+/* Keep the iPhone hamburger compact. Its corner position is fixed by
+   orientation; unlike iPad it is never a dock-drag handle. */
 html.ma-iphone #mainMenuButton{
   left:auto !important;
   right:auto !important;
@@ -1811,11 +1812,10 @@ html.ma-draw-mobile #sunDirPanel > .maSecondaryInner, html.ma-draw-mobile #depth
 </style>
 
 <style id="ma-v813-mobile-menu-drag">
-/* v8.16 — iPad always uses the hamburger as dock mover; iPhone only does
-   this in landscape. Do NOT size the iPhone app from visualViewport pixels:
-   Safari / Files preview can keep stale portrait values after rotation.
-   The fixed app and viewport instead fill the actual CSS layout viewport, and
-   JS reads their real DOM rectangles as the single source of truth. */
+/* v8.17 — iPad keeps the movable hamburger dock control. iPhone is fixed:
+   portrait = horizontal bottom dock + menu upper-right;
+   landscape = vertical right dock + menu lower-right.
+   Workspace sizing remains DOM-driven from v8.16. */
 html.ma-iphone, html.ma-iphone body{
   width:100% !important;
   height:100% !important;
@@ -1845,31 +1845,44 @@ html.ma-iphone #viewport > canvas{
 }
 
 html.ma-ipad #dockDragHandle, html.ma-iphone #dockDragHandle{display:none !important;}
-html.ma-ipad #mainMenuButton, html.ma-iphone #mainMenuButton{
+html.ma-ipad #mainMenuButton{
   right:auto !important;
   bottom:auto !important;
   touch-action:none !important;
   cursor:grab;
 }
-html.ma-ipad #mainMenuButton.dockMenuDragging,
-html.ma-iphone #mainMenuButton.dockMenuDragging{cursor:grabbing;}
+html.ma-ipad #mainMenuButton.dockMenuDragging{cursor:grabbing;}
 
-/* iPhone portrait is intentionally NOT movable. It stays exactly as the
-   classic phone layout: six-circle dock fixed at the bottom and menu in
-   the upper-right. Landscape keeps the movable iPad-style behavior. */
+/* iPhone is intentionally fixed in both orientations. */
 html.ma-iphone:not(.ma-iphone-landscape) #maBottomDock{
-    flex-direction:row !important;
-    left:calc(50% - (var(--ma-dock-length) / 2)) !important;
-    right:auto !important;
-    top:auto !important;
-    bottom:max(2px, calc(env(safe-area-inset-bottom) - 20px)) !important;
-    transform:none !important;
-  }
+  flex-direction:row !important;
+  left:calc(50% - (var(--ma-dock-length) / 2)) !important;
+  right:auto !important;
+  top:auto !important;
+  bottom:max(2px, calc(env(safe-area-inset-bottom) - 20px)) !important;
+  transform:none !important;
+}
 html.ma-iphone:not(.ma-iphone-landscape) #mainMenuButton{
   left:auto !important;
   right:max(10px, env(safe-area-inset-right)) !important;
   top:calc(max(10px, env(safe-area-inset-top)) + 2px) !important;
   bottom:auto !important;
+  touch-action:manipulation !important;
+  cursor:pointer !important;
+}
+html.ma-iphone.ma-iphone-landscape #maBottomDock{
+  flex-direction:column !important;
+  left:max(4px, env(safe-area-inset-left)) !important;
+  right:auto !important;
+  top:calc(50% - (var(--ma-dock-length) / 2)) !important;
+  bottom:auto !important;
+  transform:none !important;
+}
+html.ma-iphone.ma-iphone-landscape #mainMenuButton{
+  left:auto !important;
+  right:max(10px, env(safe-area-inset-right)) !important;
+  top:auto !important;
+  bottom:max(10px, env(safe-area-inset-bottom)) !important;
   touch-action:manipulation !important;
   cursor:pointer !important;
 }
@@ -9125,9 +9138,11 @@ const DOCK_POSITION_STORAGE_KEY='MA3D_DOCK_POSITION_V3';
 const maControlsDock=document.getElementById('maBottomDock');
 const dockDragHandle=document.getElementById('dockDragHandle');
 const MA_IS_IPHONE=!!window.__MA_IS_IPHONE__;
-const MA_MOBILE_DOCK_MENU=MA_IS_IPAD||MA_IS_IPHONE;
+const MA_MOBILE_DOCK_MENU=MA_IS_IPAD;
 function mobileDockMenuEnabled(){
-  if(MA_IS_IPAD)return true;
+  return !!MA_IS_IPAD;
+}
+function iPhoneLandscapeDock(){
   if(!MA_IS_IPHONE)return false;
   const phone=window.__MA_IPHONE_VIEWPORT__;
   return phone?!!phone.landscape:document.documentElement.classList.contains('ma-iphone-landscape');
@@ -9215,7 +9230,7 @@ function mobileDockMenuTrailExtent(){
 function positionMainMenuButtonNearDock(){
   if(!MA_MOBILE_DOCK_MENU||!maControlsDock)return;
   const b=document.getElementById('mainMenuButton');if(!b)return;
-  if(MA_IS_IPHONE&&!mobileDockMenuEnabled()){
+  if(MA_IS_IPHONE){
     for(const prop of ['left','right','top','bottom'])b.style.removeProperty(prop);
     return;
   }
@@ -9306,10 +9321,13 @@ function positionSecondaryViewPanels(){
 function applyDockPosition(){
   if(!maControlsDock)return;
 
-  // iPhone portrait always returns to the classic fixed-bottom layout. Do not
-  // overwrite the saved landscape position; it comes back when rotated again.
-  if(MA_IS_IPHONE&&!mobileDockMenuEnabled()){
-    setDockOrientation('bottom');
+  // v8.17: iPhone never uses a saved/movable dock position. Portrait is fixed
+  // at the bottom; landscape is fixed vertically on the right. CSS owns the
+  // exact safe-area placement, while dataset/classes keep follower panels synced.
+  if(MA_IS_IPHONE){
+    const side=iPhoneLandscapeDock()?'right':'bottom';
+    dockPosition={side,t:.5};
+    setDockOrientation(side);
     clearDockEdges();
     for(const prop of ['left','right','top','bottom','transform'])maControlsDock.style.removeProperty(prop);
     positionSecondaryViewPanels();
@@ -9516,7 +9534,7 @@ function queueDockDragPoint(x,y){
   });
 }
 
-loadDockPosition();
+if(!MA_IS_IPHONE)loadDockPosition();
 readDockMetrics();
 applyDockPosition();
 
@@ -12851,7 +12869,7 @@ document.addEventListener('visibilitychange',async()=>{
   standaloneResumeRefreshing=true;
   try{await saveAutosaveNow();}catch(_){ }
   const u=new URL(location.href);
-  u.searchParams.set('__ma_build',window.__MA_BUILD__||'8.16');
+  u.searchParams.set('__ma_build',window.__MA_BUILD__||'8.18');
   u.searchParams.set('__ma_resume',String(Date.now()));
   location.replace(u.href);
 });
