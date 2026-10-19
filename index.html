@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.00">
+<meta name="ma-build" content="8.14">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.00</title>
+<title>MA 3D · v8.14</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.00';
+  const CURRENT_BUILD = '8.14';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -298,6 +298,8 @@ canvas{display:block;width:100%;height:100%;outline:none}
   pointer-events:none;
 }
 .maJoystick.locking .joyKnob{background:#dfe9e3}
+/* v8.02 — a locked drawing plane is shown as a slightly darker VIEW control. */
+#viewJoystick.workplaneLocked{background:#e1e1dc}
 .joyLabel{
   position:absolute;
   z-index:2;
@@ -1081,27 +1083,19 @@ html.ma-library-open #maBottomDock, html.ma-library-open #mainMenuButton, html.m
   }
 }
 
-/* v7.44 — iPhone layout -------------------------------------------------- */
-/* Six controls fit comfortably across the phone and are truly centered. */
+/* v8.14 — iPhone keeps the classic fixed-bottom portrait dock.
+   The iPad-style movable perimeter dock is enabled only in landscape. */
 html.ma-iphone{
   --ma-control-size:52px;
   --ma-control-gap:4px;
   --ma-side-dock-pad:4px;
 }
-html.ma-iphone #maBottomDock{
-  flex-direction:row !important;
-  left:calc(50% - (var(--ma-dock-length) / 2)) !important;
-  right:auto !important;
-  top:auto !important;
-  bottom:max(2px, calc(env(safe-area-inset-bottom) - 20px)) !important;
-  transform:none !important;
-}
 
-/* On iPhone the menu belongs in the upper-right and should stay visually small. */
+/* Keep the iPhone hamburger compact, but let JS place it beside the dock. */
 html.ma-iphone #mainMenuButton{
   left:auto !important;
-  right:max(10px, env(safe-area-inset-right)) !important;
-  top:calc(max(10px, env(safe-area-inset-top)) + 2px) !important;
+  right:auto !important;
+  top:auto !important;
   bottom:auto !important;
   width:34px !important;
   height:34px !important;
@@ -1816,16 +1810,40 @@ html.ma-draw-mobile #sunDirPanel > .maSecondaryInner, html.ma-draw-mobile #depth
 }
 </style>
 
-<style id="ma-v788-scene-mood-ipad-menu-drag">
-/* v7.88 — iPad uses the hamburger as the dock mover. The old protruding tab is gone. */
-html.ma-ipad #dockDragHandle{display:none !important;}
-html.ma-ipad #mainMenuButton{
+<style id="ma-v813-mobile-menu-drag">
+/* v8.14 — iPad always uses the hamburger as dock mover; iPhone only does
+   this in landscape. Portrait restores the classic fixed-bottom phone UI. */
+html.ma-ipad #dockDragHandle, html.ma-iphone #dockDragHandle{display:none !important;}
+html.ma-ipad #mainMenuButton, html.ma-iphone #mainMenuButton{
   right:auto !important;
   bottom:auto !important;
   touch-action:none !important;
   cursor:grab;
 }
-html.ma-ipad #mainMenuButton.dockMenuDragging{cursor:grabbing;}
+html.ma-ipad #mainMenuButton.dockMenuDragging,
+html.ma-iphone #mainMenuButton.dockMenuDragging{cursor:grabbing;}
+
+/* iPhone portrait is intentionally NOT movable. It stays exactly as the
+   classic phone layout: six-circle dock fixed at the bottom and menu in
+   the upper-right. Landscape keeps the movable iPad-style behavior. */
+@media (orientation:portrait){
+  html.ma-iphone #maBottomDock{
+    flex-direction:row !important;
+    left:calc(50% - (var(--ma-dock-length) / 2)) !important;
+    right:auto !important;
+    top:auto !important;
+    bottom:max(2px, calc(env(safe-area-inset-bottom) - 20px)) !important;
+    transform:none !important;
+  }
+  html.ma-iphone #mainMenuButton{
+    left:auto !important;
+    right:max(10px, env(safe-area-inset-right)) !important;
+    top:calc(max(10px, env(safe-area-inset-top)) + 2px) !important;
+    bottom:auto !important;
+    touch-action:manipulation !important;
+    cursor:pointer !important;
+  }
+}
 </style>
 
 <style id="ma-v795-unified-dock-type">
@@ -1949,7 +1967,7 @@ html.ma-draw-mobile #lookJoystick.iphoneBrushChoiceMode::after {
   
   
   <div id="maBottomDock" aria-label="MA controls" data-side="left">
-  <div id="viewJoystick" class="maJoystick viewJoystick" aria-label="View joystick. Left X, right Y, up Z, down Perspective. Hold X/Y/Z to axis-lock Move.">
+  <div id="viewJoystick" class="maJoystick viewJoystick" aria-label="View joystick. Tap locks or unlocks the current workplane. Left X, right Y, up Z, down Perspective. Hold X/Y/Z to axis-lock Move.">
     <span class="joyLabel joyUp" data-joy-view="z">Z</span>
     <span class="joyLabel joyLeft" data-joy-view="x">X</span>
     <span class="joyLabel joyRight" data-joy-view="y">Y</span>
@@ -1975,7 +1993,7 @@ html.ma-draw-mobile #lookJoystick.iphoneBrushChoiceMode::after {
     </button>
   </div>
 
-  <div id="lookJoystick" class="maJoystick lookJoystick" aria-label="Look joystick. Left Mass, up Light, right Depth Fog, down Workspace.">
+  <div id="lookJoystick" class="maJoystick lookJoystick" aria-label="Look joystick. Tap toggles outlines. Left Mass, up Light, right Depth Fog, down Workspace.">
     <span class="joyLabel joyUp" data-joy-mode="shadow">L</span>
     <span class="joyLabel joyLeft" data-joy-mode="notan">M</span>
     <span class="joyLabel joyRight" data-joy-mode="depth">D</span>
@@ -2138,6 +2156,18 @@ function restoreViewSettings(saved,legacyLight=null,legacyDepth=null){
   }
 }
 function updateLighting(){
+  // v8.09 — Workspace is tuned closer to Blender Solid: very light neutral grey
+// faces, but clearer plane separation from a stronger studio key and slightly
+// lower flat fill, so top/side/front planes stay readable without outlines.
+  // The soft studio fill keeps face directions readable while the pure white
+  // background still remains slightly brighter with outlines disabled.
+  if(viewMode==='workspace'){
+    hemi.color.setHex(0xffffff);
+    hemi.groundColor.setHex(0xc7cbd2);
+  }else{
+    hemi.color.setHex(0xffffff);
+    hemi.groundColor.setHex(0x3b3f46);
+  }
   hemi.intensity=lightState.ambientIntensity;
   sun.intensity=lightState.sunIntensity;
   const az=THREE.MathUtils.degToRad(lightState.azimuth),el=THREE.MathUtils.degToRad(lightState.elevation),dist=lightState.distance;
@@ -2289,8 +2319,10 @@ function applyViewMode(mode,{rememberPrevious=true}={}){
   }
 
   if(viewMode==='workspace'){
-    // Workspace = standard modelling light. No cast shadows.
-    Object.assign(lightState,{sunIntensity:2.0,ambientIntensity:1.8,shadowOpacity:0.0,shadowsEnabled:false,hardShadows:true});
+    // Workspace = neutral solid/studio shading. Keep enough hemisphere fill for
+    // all face directions, with only a restrained key light for form separation.
+    // The face color stays visibly grey against MA's white background.
+    Object.assign(lightState,{sunIntensity:0.52,ambientIntensity:0.68,shadowOpacity:0.0,shadowsEnabled:false,hardShadows:true});
     if(typeof postMat!=='undefined')postMat.uniforms.uThreshold.value=0.5;
   }else if(viewMode==='notan'){
     // Masse = all mass reads as solid black silhouettes.
@@ -3204,7 +3236,7 @@ function projectionAxisVector(mode){
   return maWorldAxis(mode);
 }
 function setOrthographicDrawingPlane(flash=false){
-  if(projectionMode==='perspective')return;
+  if(projectionMode==='perspective'||workplaneLocked)return;
   camera.updateMatrixWorld(true);
   const right=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0).normalize();
   const up=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1).normalize();
@@ -3412,6 +3444,7 @@ function rdp(points,eps){
 // --- Workplane -----------------------------------------------------------------
 const workplane={origin:new THREE.Vector3(0,0,0),u:new THREE.Vector3(1,0,0),v:new THREE.Vector3(0,0,-1),n:new THREE.Vector3(0,1,0),label:'GROUND',hostId:null};
 let workplaneKind='ground';
+let workplaneLocked=false;
 const viewWorkplaneState={
   cameraPos:new THREE.Vector3(),
   forward:new THREE.Vector3(0,0,-1),
@@ -3424,6 +3457,27 @@ const viewWorkplaneState={
   locked:false,
   lastFollowSignature:''
 };
+function syncWorkplaneLockUI(){
+  const view=document.getElementById('viewJoystick');
+  const realViewControl=typeof primaryDockMode!=='function'||primaryDockMode()==='base';
+  view?.classList.toggle('workplaneLocked',!!workplaneLocked&&realViewControl);
+  if(ui?.planeBadge)ui.planeBadge.classList.toggle('locked',!!workplaneLocked);
+  if(workplaneKind==='view'){
+    viewWorkplaneState.locked=!!workplaneLocked;
+    if(!workplaneLocked)viewWorkplaneState.lastFollowSignature='';
+    syncViewWorkplaneUI?.();
+  }
+}
+function setWorkplaneLocked(next,{announce=true}={}){
+  workplaneLocked=!!next;
+  syncWorkplaneLockUI();
+  updateMobileDrawUI?.();
+  scheduleAutosave?.();
+  if(announce)showToast(`WORKPLANE ${workplaneLocked?'LOCKED':'UNLOCKED'}`);
+  return workplaneLocked;
+}
+function toggleWorkplaneLock(){return setWorkplaneLocked(!workplaneLocked);}
+
 function makePlaneGrid(size=3.2,steps=8,color=accent,opacity=.12){
   const a=[];for(let i=0;i<=steps;i++){const t=-size/2+size*i/steps;a.push(-size/2,t,0,size/2,t,0,t,-size/2,0,t,size/2,0);}const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(a,3));
   const m=new THREE.LineBasicMaterial({color,transparent:true,opacity,depthTest:false,depthWrite:false});const o=new THREE.LineSegments(g,m);o.renderOrder=1500;return o;
@@ -3628,7 +3682,7 @@ function applyViewWorkplaneFromState(flash=false){
   updateViewPlanePreview();
 }
 function syncUnlockedViewWorkplane(){
-  if(workplaneKind!=='view'||viewWorkplaneState.locked)return;
+  if(workplaneKind!=='view'||workplaneLocked||viewWorkplaneState.locked)return;
   camera.updateMatrixWorld(true);
   const pos=new THREE.Vector3().copy(camera.position);
   const fwd=new THREE.Vector3();camera.getWorldDirection(fwd).normalize();
@@ -3691,9 +3745,10 @@ function setWorkplane(p,toast=true,kind='surface',flash=true){
   workplaneKind=kind;
   updatePlaneObject(activePlaneGrid,workplane);activePlaneGrid.visible=false;hoverPlaneGrid.visible=false;
   ui.planeBadge.textContent='WORKPLANE · '+workplane.label+(workplane.hostId?' · MASS '+workplane.hostId:'');
-  ui.planeBadge.classList.remove('locked');
+  ui.planeBadge.classList.toggle('locked',!!workplaneLocked);
   if(flash)blinkPlaneBadge();
   updateWorkplaneButtons();
+  syncWorkplaneLockUI();
   if(kind!=='view'){
     const vp=document.getElementById('viewWorkplanePanel');
     if(vp)vp.style.display='none';
@@ -3727,7 +3782,7 @@ function setViewPlane(flash=true){
   prepareStandalonePlane();
   captureCurrentViewBasis();
   viewWorkplaneState.depthFactor=1;
-  viewWorkplaneState.locked=false;
+  viewWorkplaneState.locked=!!workplaneLocked;
   viewWorkplaneState.lastFollowSignature='';
   applyViewWorkplaneDepth(flash);
   syncViewWorkplaneDepthUI();
@@ -4218,7 +4273,8 @@ function serializeProject(){
         v:workplane.v.toArray(),
         n:workplane.n.toArray(),
         label:workplane.label,
-        hostId:workplane.hostId??null
+        hostId:workplane.hostId??null,
+        locked:!!workplaneLocked
       },
       viewMode,
       light:{azimuth:lightState.azimuth,elevation:lightState.elevation,distance:lightState.distance},
@@ -5223,6 +5279,7 @@ function loadProjectObject(project,{fromAutosave=false}={}){
       n:new THREE.Vector3().fromArray(s.workplane.n||[0,1,0]),
       label:s.workplane.label||'GROUND',hostId:s.workplane.hostId??null
     };
+    workplaneLocked=!!s.workplane.locked;
     setWorkplane(wp,false,s.workplane.kind||'ground',false);
     if((s.workplane.kind||'ground')==='view'){
       // Keep the saved plane exactly where it was. Rebuild the depth-control frame
@@ -5235,9 +5292,11 @@ function loadProjectObject(project,{fromAutosave=false}={}){
       const d=workplane.origin.clone().sub(viewWorkplaneState.cameraPos).dot(viewWorkplaneState.forward);
       viewWorkplaneState.baseDepth=Math.max(.02,d);
       viewWorkplaneState.depthFactor=1;
+      viewWorkplaneState.locked=!!workplaneLocked;
       syncViewWorkplaneDepthUI();
     }
-  }else setGroundPlane(false);
+    syncWorkplaneLockUI();
+  }else{workplaneLocked=false;setGroundPlane(false);syncWorkplaneLockUI();}
 
   groundGrid.visible=!thumbnail&&viewMode!=='notan'&&viewMode!=='depth';
   fitShadowCamera(true);
@@ -5402,7 +5461,7 @@ function updateMassVisual(m){
   const sel=isSelectedMass(m);
   let base=0xffffff;
   if(viewMode==='notan')base=sel?0x283139:0x000000;
-  else if(viewMode==='workspace'&&sel)base=0xc7d4dc;
+  else if(viewMode==='workspace')base=sel?0xe4ecf2:0xe8e8e8;
 
   m.mesh.material.color.set(base);
   if(m.mesh.material.emissive){
@@ -5864,7 +5923,7 @@ function syncSceneDockVisuals(){
   if(look){
     look.classList.remove('sceneDockMode','sceneMoodSlot','sceneSlotFilled','sceneSlotActive','sceneSlotDirty');
     delete look.dataset.sceneLabel;
-    look.setAttribute('aria-label','Look joystick. Left Mass, up Light, right Depth Fog, down Workspace.');
+    look.setAttribute('aria-label','Look joystick. Tap toggles outlines. Left Mass, up Light, right Depth Fog, down Workspace.');
   }
 }
 function setSceneDockOpen(open){
@@ -6100,6 +6159,7 @@ function updateMobileDrawUI(){
   document.getElementById('viewJoystick')?.classList.toggle('locking',
     !!viewAxisHold?.usedAsLock||!!desktopAxisMoveArmed||!!interaction?.axisHoldMove
   );
+  syncWorkplaneLockUI();
 
   updateBrushSizeButton();
 
@@ -6378,6 +6438,7 @@ function endSelectModeHold(e=null){
 }
 function prepareMobileStrokePlane(x,y){
   if(!MA_UNIFIED_UI)return;
+  if(workplaneLocked){updateMobileDrawUI();return;}
 
   // A real face always wins, in Perspective AND Orthographic views.
   // This lets Add/Erase continue naturally from existing geometry.
@@ -8752,12 +8813,14 @@ function setTool(t){
   showToast((meta?.label||t).toUpperCase());
 }
 function pickWorkplaneAt(x,y){
+  if(workplaneLocked){showToast('WORKPLANE LOCKED');return;}
   const hit=raycastMasses(x,y);
   if(hit){setWorkplane(workplaneFromHit(hit),false,'surface');}
   else setGroundPlane();
   const back=toolBeforePlane||'select';setTool(back);
 }
 function pickGuideWorkplaneAt(x,y,announce=true){
+  if(workplaneLocked){if(announce)showToast('WORKPLANE LOCKED');return false;}
   // Exact pointer-position fallback for iPads without Pencil hover:
   // hold the assigned controller key, then tap the wanted face with Pencil.
   if(interaction||transformDragging)return false;
@@ -8779,6 +8842,7 @@ function pickGuideWorkplaneAt(x,y,announce=true){
 }
 
 function lockWorkplaneFromHover(){
+  if(workplaneLocked){showToast('WORKPLANE LOCKED');return;}
   // Original hover workflow remains intact where Pencil hover exists.
   if(interaction||transformDragging)return;
   pickGuideWorkplaneAt(lastPointerClient.x,lastPointerClient.y,false);
@@ -8986,10 +9050,7 @@ document.getElementById('viewWorkplaneClose').onclick=()=>{
 };
 document.getElementById('viewWorkplaneRetake').onclick=()=>openViewWorkplanePanel(true);
 document.getElementById('viewWorkplaneLock').onclick=()=>{
-  viewWorkplaneState.locked=!viewWorkplaneState.locked;
-  if(!viewWorkplaneState.locked)viewWorkplaneState.lastFollowSignature='';
-  syncViewWorkplaneUI();
-  scheduleAutosave();
+  setWorkplaneLocked(!workplaneLocked);
 };
 document.getElementById('viewWorkplaneDepth').oninput=e=>{
   viewWorkplaneState.depthFactor=clamp(+e.target.value/100,.1,3.5);
@@ -9004,7 +9065,11 @@ const DOCK_POSITION_STORAGE_KEY='MA3D_DOCK_POSITION_V3';
 const maControlsDock=document.getElementById('maBottomDock');
 const dockDragHandle=document.getElementById('dockDragHandle');
 const MA_IS_IPHONE=!!window.__MA_IS_IPHONE__;
-if(MA_IS_IPAD&&dockDragHandle)dockDragHandle.remove();
+const MA_MOBILE_DOCK_MENU=MA_IS_IPAD||MA_IS_IPHONE;
+function mobileDockMenuEnabled(){
+  return MA_IS_IPAD || (MA_IS_IPHONE && window.matchMedia?.('(orientation:landscape)').matches);
+}
+if(MA_MOBILE_DOCK_MENU&&dockDragHandle)dockDragHandle.remove();
 
 let dockPosition={side:MA_IS_IPHONE?'bottom':'left',t:.5};
 let dockDragPointerId=null;
@@ -9033,11 +9098,6 @@ function metrics(){
 }
 
 function loadDockPosition(){
-  if(MA_IS_IPHONE){
-    dockPosition={side:'bottom',t:.5};
-    return;
-  }
-
   try{
     const saved=JSON.parse(localStorage.getItem(DOCK_POSITION_STORAGE_KEY)||'null');
     if(
@@ -9051,8 +9111,6 @@ function loadDockPosition(){
 }
 
 function saveDockPosition(){
-  if(MA_IS_IPHONE)return;
-
   try{
     localStorage.setItem(DOCK_POSITION_STORAGE_KEY,JSON.stringify(dockPosition));
   }catch(_){}
@@ -9075,18 +9133,22 @@ function clearDockEdges(){
   maControlsDock.style.transform='none';
 }
 
-const IPAD_DOCK_MENU_GAP=8;
-function ipadDockMenuTrailExtent(){
-  if(!MA_IS_IPAD)return 0;
+const MOBILE_DOCK_MENU_GAP=MA_IS_IPHONE?4:8;
+function mobileDockMenuTrailExtent(){
+  if(!mobileDockMenuEnabled())return 0;
   const b=document.getElementById('mainMenuButton');
   if(!b)return 54;
   const r=b.getBoundingClientRect();
   const vertical=maControlsDock?.classList.contains('dock-vertical');
-  return IPAD_DOCK_MENU_GAP+(vertical?Math.max(1,r.height):Math.max(1,r.width));
+  return MOBILE_DOCK_MENU_GAP+(vertical?Math.max(1,r.height):Math.max(1,r.width));
 }
 function positionMainMenuButtonNearDock(){
-  if(!MA_IS_IPAD||!maControlsDock)return;
+  if(!MA_MOBILE_DOCK_MENU||!maControlsDock)return;
   const b=document.getElementById('mainMenuButton');if(!b)return;
+  if(MA_IS_IPHONE&&!mobileDockMenuEnabled()){
+    for(const prop of ['left','right','top','bottom'])b.style.removeProperty(prop);
+    return;
+  }
   const dr=maControlsDock.getBoundingClientRect();
   const br=b.getBoundingClientRect();
   const bw=Math.max(1,br.width||46),bh=Math.max(1,br.height||46);
@@ -9095,17 +9157,17 @@ function positionMainMenuButtonNearDock(){
   let left,top;
   if(vertical){
     left=dr.left+(dr.width-bw)*.5;
-    top=dr.bottom+IPAD_DOCK_MENU_GAP;
+    top=dr.bottom+MOBILE_DOCK_MENU_GAP;
   }else{
-    left=dr.right+IPAD_DOCK_MENU_GAP;
+    left=dr.right+MOBILE_DOCK_MENU_GAP;
     top=dr.top+(dr.height-bh)*.5;
   }
   left=clamp(left,margin,Math.max(margin,W-margin-bw));
   top=clamp(top,margin,Math.max(margin,H-margin-bh));
-  b.style.left=`${Math.round(left)}px`;
-  b.style.top=`${Math.round(top)}px`;
-  b.style.right='auto';
-  b.style.bottom='auto';
+  b.style.setProperty('left',`${Math.round(left)}px`,'important');
+  b.style.setProperty('top',`${Math.round(top)}px`,'important');
+  b.style.setProperty('right','auto','important');
+  b.style.setProperty('bottom','auto','important');
 }
 
 /* v7.53: Light / Depth is a true follower of the movable main dock on iPad. */
@@ -9175,17 +9237,14 @@ function positionSecondaryViewPanels(){
 function applyDockPosition(){
   if(!maControlsDock)return;
 
-  if(MA_IS_IPHONE){
-    dockPosition={side:'bottom',t:.5};
+  // iPhone portrait always returns to the classic fixed-bottom layout. Do not
+  // overwrite the saved landscape position; it comes back when rotated again.
+  if(MA_IS_IPHONE&&!mobileDockMenuEnabled()){
     setDockOrientation('bottom');
     clearDockEdges();
-
-    // Center without transform: the canonical dock CSS intentionally locks
-    // transform:none!important, so centering must be expressed in left itself.
-    maControlsDock.style.left='calc(50% - (var(--ma-dock-length) / 2))';
-    maControlsDock.style.bottom='max(2px, calc(env(safe-area-inset-bottom) - 20px))';
-    maControlsDock.style.transform='none';
+    for(const prop of ['left','right','top','bottom','transform'])maControlsDock.style.removeProperty(prop);
     positionSecondaryViewPanels();
+    positionMainMenuButtonNearDock();
     return;
   }
 
@@ -9203,7 +9262,7 @@ function applyDockPosition(){
 
   if(side==='left'||side==='right'){
     const minTop=margin;
-    const trail=MA_IS_IPAD?ipadDockMenuTrailExtent():m.exposed;
+    const trail=mobileDockMenuEnabled()?mobileDockMenuTrailExtent():m.exposed;
     const maxTop=Math.max(minTop,H-margin-m.length-trail);
     const centerY=clamp(
       dockPosition.t*H,
@@ -9217,7 +9276,7 @@ function applyDockPosition(){
     else maControlsDock.style.right=`${margin}px`;
   }else{
     const minLeft=margin;
-    const trail=MA_IS_IPAD?ipadDockMenuTrailExtent():m.exposed;
+    const trail=mobileDockMenuEnabled()?mobileDockMenuTrailExtent():m.exposed;
     const maxLeft=Math.max(minLeft,W-margin-m.length-trail);
     const centerX=clamp(
       dockPosition.t*W,
@@ -9345,7 +9404,7 @@ function placeDockFromGrab(x,y){
 }
 
 function placeDockFromMenuGrab(x,y){
-  if(!MA_IS_IPAD||!maControlsDock||!dockDragState)return;
+  if(!mobileDockMenuEnabled()||!maControlsDock||!dockDragState)return;
   const b=document.getElementById('mainMenuButton');if(!b)return;
   const m=metrics(),W=Math.max(1,window.innerWidth),H=Math.max(1,window.innerHeight),margin=6;
   const br=b.getBoundingClientRect();
@@ -9356,16 +9415,16 @@ function placeDockFromMenuGrab(x,y){
   clearDockEdges();
 
   if(side==='left'||side==='right'){
-    const trail=IPAD_DOCK_MENU_GAP+bh;
-    let top=(y-dockDragState.grabV*bh)-IPAD_DOCK_MENU_GAP-m.length;
+    const trail=MOBILE_DOCK_MENU_GAP+bh;
+    let top=(y-dockDragState.grabV*bh)-MOBILE_DOCK_MENU_GAP-m.length;
     top=clamp(top,margin,Math.max(margin,H-margin-m.length-trail));
     maControlsDock.style.top=`${top}px`;
     if(side==='left')maControlsDock.style.left=`${margin}px`;
     else maControlsDock.style.right=`${margin}px`;
     dockPosition={side,t:clamp((top+m.length*.5)/H,0,1)};
   }else{
-    const trail=IPAD_DOCK_MENU_GAP+bw;
-    let left=(x-dockDragState.grabU*bw)-IPAD_DOCK_MENU_GAP-m.length;
+    const trail=MOBILE_DOCK_MENU_GAP+bw;
+    let left=(x-dockDragState.grabU*bw)-MOBILE_DOCK_MENU_GAP-m.length;
     left=clamp(left,margin,Math.max(margin,W-margin-m.length-trail));
     maControlsDock.style.left=`${left}px`;
     if(side==='top')maControlsDock.style.top=`${margin}px`;
@@ -9401,6 +9460,11 @@ window.addEventListener('resize',()=>{
     readDockMetrics();
     applyDockPosition();
   });
+},{passive:true});
+window.addEventListener('orientationchange',()=>{
+  dockMetrics=null;
+  requestAnimationFrame(()=>{readDockMetrics();applyDockPosition();});
+  setTimeout(()=>{dockMetrics=null;readDockMetrics();applyDockPosition();},180);
 },{passive:true});
 
 if(dockDragHandle&&!MA_IS_IPHONE&&!MA_IS_IPAD){
@@ -9505,11 +9569,11 @@ installPencilButtonActivation(document.getElementById('sunDirPanel'));
 installPencilButtonActivation(document.getElementById('depthRangePanel'));
 
 const mainMenuButton=document.getElementById('mainMenuButton');
-const IPAD_MENU_DOCK_HOLD_MS=160;
-const IPAD_MENU_DOCK_MOVE_PX=8;
-let ipadMenuDockPress=null;
-function beginIPadMenuDockDrag(press){
-  if(!MA_IS_IPAD||!press||press.dragging)return;
+const MOBILE_MENU_DOCK_HOLD_MS=160;
+const MOBILE_MENU_DOCK_MOVE_PX=8;
+let mobileMenuDockPress=null;
+function beginMobileMenuDockDrag(press){
+  if(!mobileDockMenuEnabled()||!press||press.dragging)return;
   const r=mainMenuButton.getBoundingClientRect();
   press.dragging=true;
   dockDragPointerId=press.pointerId;
@@ -9521,30 +9585,30 @@ function beginIPadMenuDockDrag(press){
   mainMenuButton.classList.add('dockMenuDragging');
 }
 if(mainMenuButton){
-  if(MA_IS_IPAD){
+  if(MA_MOBILE_DOCK_MENU){
     mainMenuButton.addEventListener('pointerdown',e=>{
       e.preventDefault();e.stopPropagation();
       unifiedUIPointers.add(e.pointerId);
-      if(ipadMenuDockPress)return;
-      const press=ipadMenuDockPress={
+      if(mobileMenuDockPress)return;
+      const press=mobileMenuDockPress={
         pointerId:e.pointerId,startX:e.clientX,startY:e.clientY,lastX:e.clientX,lastY:e.clientY,
         dragging:false,timer:null
       };
-      press.timer=setTimeout(()=>{if(ipadMenuDockPress===press)beginIPadMenuDockDrag(press);},IPAD_MENU_DOCK_HOLD_MS);
+      press.timer=mobileDockMenuEnabled()?setTimeout(()=>{if(mobileMenuDockPress===press)beginMobileMenuDockDrag(press);},MOBILE_MENU_DOCK_HOLD_MS):null;
       try{mainMenuButton.setPointerCapture?.(e.pointerId);}catch(_){}
     },{passive:false});
     mainMenuButton.addEventListener('pointermove',e=>{
-      const press=ipadMenuDockPress;if(!press||press.pointerId!==e.pointerId)return;
+      const press=mobileMenuDockPress;if(!press||press.pointerId!==e.pointerId)return;
       e.preventDefault();e.stopPropagation();
       press.lastX=e.clientX;press.lastY=e.clientY;
-      if(!press.dragging&&Math.hypot(e.clientX-press.startX,e.clientY-press.startY)>=IPAD_MENU_DOCK_MOVE_PX){
+      if(mobileDockMenuEnabled()&&!press.dragging&&Math.hypot(e.clientX-press.startX,e.clientY-press.startY)>=MOBILE_MENU_DOCK_MOVE_PX){
         if(press.timer){clearTimeout(press.timer);press.timer=null;}
-        beginIPadMenuDockDrag(press);
+        beginMobileMenuDockDrag(press);
       }
       if(press.dragging)queueDockDragPoint(e.clientX,e.clientY);
     },{passive:false});
-    const finishIPadMenuDock=(e,cancel=false)=>{
-      const press=ipadMenuDockPress;if(!press||press.pointerId!==e.pointerId)return;
+    const finishMobileMenuDock=(e,cancel=false)=>{
+      const press=mobileMenuDockPress;if(!press||press.pointerId!==e.pointerId)return;
       e.preventDefault();e.stopPropagation();
       if(press.timer)clearTimeout(press.timer);
       press.lastX=e.clientX;press.lastY=e.clientY;
@@ -9560,11 +9624,11 @@ if(mainMenuButton){
       }else if(!cancel){
         setMAMenuDockOpen(!maMenuDockOpen);
       }
-      ipadMenuDockPress=null;
+      mobileMenuDockPress=null;
     };
-    mainMenuButton.addEventListener('pointerup',e=>finishIPadMenuDock(e,false),{passive:false});
-    mainMenuButton.addEventListener('pointercancel',e=>finishIPadMenuDock(e,true),{passive:false});
-    // Pointerup above is authoritative on iPad; swallow Safari's synthesized click.
+    mainMenuButton.addEventListener('pointerup',e=>finishMobileMenuDock(e,false),{passive:false});
+    mainMenuButton.addEventListener('pointercancel',e=>finishMobileMenuDock(e,true),{passive:false});
+    // Pointerup above is authoritative on iPhone/iPad; swallow Safari's synthesized click.
     mainMenuButton.onclick=e=>{e.preventDefault();e.stopPropagation();};
   }else{
     mainMenuButton.addEventListener('pointerdown',e=>{unifiedUIPointers.add(e.pointerId);},{passive:true});
@@ -9813,7 +9877,9 @@ function endViewJoystick(e,cancel=false){
   axisLock=null;
   setJoystickKnob('view',null);
 
-  if(!cancel&&mode){
+  if(!cancel&&!st.dir&&primaryDockMode()==='base'){
+    toggleWorkplaneLock();
+  }else if(!cancel&&mode){
     if(
       (st.pointerType==='mouse'||st.pointerType==='pen') &&
       (mode==='x'||mode==='y'||mode==='z') &&
@@ -9829,6 +9895,26 @@ function endViewJoystick(e,cancel=false){
   }
 
   updateMobileDrawUI();
+}
+// v8.02 — a center tap on the real VIEW joystick toggles the current workplane lock.
+// v8.01 — a center tap on the real MOOD joystick toggles global outlines.
+// Directional swipes keep their existing M/L/D/W behavior. The selection
+// joystick and other contextual dock modes do not inherit this center-tap action.
+function toggleOutlinesFromMoodJoystick(){
+  outlinesEnabled=!outlinesEnabled;
+  updateAllMassVisuals();
+  const outlineBtn=document.getElementById('outlines');
+  if(outlineBtn){
+    outlineBtn.textContent='◇';
+    outlineBtn.classList.toggle('activeState',outlinesEnabled);
+  }
+  scheduleAutosave();
+  showToast(`OUTLINES ${outlinesEnabled?'ON':'OFF'}`);
+}
+function moodJoystickTapCanToggleOutlines(st){
+  if(!st||st.selectionMode)return false;
+  const dockMode=primaryDockMode();
+  return dockMode==='base'||dockMode==='scenes';
 }
 function beginLookJoystick(e){
   e.preventDefault();e.stopPropagation();
@@ -9865,6 +9951,8 @@ function endLookJoystick(e,cancel=false){
 
   if(!cancel&&selectionAction){
     runSelectionJoystickAction(selectionAction);
+  }else if(!cancel&&!st.dir&&moodJoystickTapCanToggleOutlines(st)){
+    toggleOutlinesFromMoodJoystick();
   }else if(!cancel&&mode){
     const sameSettingsMood=(mode===viewMode&&(mode==='shadow'||mode==='depth'));
     if(sameSettingsMood){
@@ -12601,8 +12689,31 @@ function resizeViewportRenderer(){
   updateGraphicTargetSize();
   updateSafeFrame();
 }
-window.addEventListener('resize',resizeViewportRenderer);
-window.addEventListener('orientationchange',()=>setTimeout(resizeViewportRenderer,80));
+
+// v8.14 — iOS can report the old layout size for part of an orientation change.
+// Observe the actual viewport element and also settle again after rotation so the
+// camera projection can never remain stretched from the previous aspect ratio.
+let viewportResizeRAF=0;
+function scheduleViewportResize(){
+  if(viewportResizeRAF)cancelAnimationFrame(viewportResizeRAF);
+  viewportResizeRAF=requestAnimationFrame(()=>{
+    viewportResizeRAF=0;
+    resizeViewportRenderer();
+    dockMetrics=null;
+    readDockMetrics();
+    applyDockPosition();
+  });
+}
+window.addEventListener('resize',scheduleViewportResize,{passive:true});
+window.visualViewport?.addEventListener('resize',scheduleViewportResize,{passive:true});
+if(typeof ResizeObserver!=='undefined'){
+  const viewportResizeObserver=new ResizeObserver(()=>scheduleViewportResize());
+  viewportResizeObserver.observe(container);
+}
+window.addEventListener('orientationchange',()=>{
+  scheduleViewportResize();
+  for(const delay of [80,180,360])setTimeout(scheduleViewportResize,delay);
+},{passive:true});
 
 function animate(){requestAnimationFrame(animate);renderViewport();}animate();
 window.addEventListener('pointerup',()=>scheduleAutosave());
@@ -12671,7 +12782,7 @@ document.addEventListener('visibilitychange',async()=>{
   standaloneResumeRefreshing=true;
   try{await saveAutosaveNow();}catch(_){ }
   const u=new URL(location.href);
-  u.searchParams.set('__ma_build',window.__MA_BUILD__||'8.00');
+  u.searchParams.set('__ma_build',window.__MA_BUILD__||'8.14');
   u.searchParams.set('__ma_resume',String(Date.now()));
   location.replace(u.href);
 });
