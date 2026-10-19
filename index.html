@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.14">
+<meta name="ma-build" content="8.16">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.14</title>
+<title>MA 3D · v8.16</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.14';
+  const CURRENT_BUILD = '8.16';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -1811,8 +1811,39 @@ html.ma-draw-mobile #sunDirPanel > .maSecondaryInner, html.ma-draw-mobile #depth
 </style>
 
 <style id="ma-v813-mobile-menu-drag">
-/* v8.14 — iPad always uses the hamburger as dock mover; iPhone only does
-   this in landscape. Portrait restores the classic fixed-bottom phone UI. */
+/* v8.16 — iPad always uses the hamburger as dock mover; iPhone only does
+   this in landscape. Do NOT size the iPhone app from visualViewport pixels:
+   Safari / Files preview can keep stale portrait values after rotation.
+   The fixed app and viewport instead fill the actual CSS layout viewport, and
+   JS reads their real DOM rectangles as the single source of truth. */
+html.ma-iphone, html.ma-iphone body{
+  width:100% !important;
+  height:100% !important;
+  max-width:none !important;
+  max-height:none !important;
+  margin:0 !important;
+}
+html.ma-iphone #app{
+  position:fixed !important;
+  inset:0 !important;
+  width:auto !important;
+  height:auto !important;
+  max-width:none !important;
+  max-height:none !important;
+}
+html.ma-iphone #viewport{
+  position:absolute !important;
+  inset:0 !important;
+  width:auto !important;
+  height:auto !important;
+  max-width:none !important;
+  max-height:none !important;
+}
+html.ma-iphone #viewport > canvas{
+  width:100% !important;
+  height:100% !important;
+}
+
 html.ma-ipad #dockDragHandle, html.ma-iphone #dockDragHandle{display:none !important;}
 html.ma-ipad #mainMenuButton, html.ma-iphone #mainMenuButton{
   right:auto !important;
@@ -1826,8 +1857,7 @@ html.ma-iphone #mainMenuButton.dockMenuDragging{cursor:grabbing;}
 /* iPhone portrait is intentionally NOT movable. It stays exactly as the
    classic phone layout: six-circle dock fixed at the bottom and menu in
    the upper-right. Landscape keeps the movable iPad-style behavior. */
-@media (orientation:portrait){
-  html.ma-iphone #maBottomDock{
+html.ma-iphone:not(.ma-iphone-landscape) #maBottomDock{
     flex-direction:row !important;
     left:calc(50% - (var(--ma-dock-length) / 2)) !important;
     right:auto !important;
@@ -1835,14 +1865,13 @@ html.ma-iphone #mainMenuButton.dockMenuDragging{cursor:grabbing;}
     bottom:max(2px, calc(env(safe-area-inset-bottom) - 20px)) !important;
     transform:none !important;
   }
-  html.ma-iphone #mainMenuButton{
-    left:auto !important;
-    right:max(10px, env(safe-area-inset-right)) !important;
-    top:calc(max(10px, env(safe-area-inset-top)) + 2px) !important;
-    bottom:auto !important;
-    touch-action:manipulation !important;
-    cursor:pointer !important;
-  }
+html.ma-iphone:not(.ma-iphone-landscape) #mainMenuButton{
+  left:auto !important;
+  right:max(10px, env(safe-area-inset-right)) !important;
+  top:calc(max(10px, env(safe-area-inset-top)) + 2px) !important;
+  bottom:auto !important;
+  touch-action:manipulation !important;
+  cursor:pointer !important;
 }
 </style>
 
@@ -2035,6 +2064,36 @@ window.__MA_DRAW_MOBILE__=__maDrawMobile;
 window.__MA_UNIFIED_UI__=true;
 window.__MA_IS_IPAD__=__maIsIPad;
 window.__MA_IS_IPHONE__=__maIsIPhone;
+
+// v8.16 — iPhone rotation uses the actual rendered app rectangle as source of
+// truth. visualViewport is intentionally not used for dimensions because some
+// iOS file/webview surfaces keep stale portrait values after device rotation.
+window.__maReadIPhoneLayout=function __maReadIPhoneLayout(){
+  if(!__maIsIPhone)return null;
+  const app=document.getElementById('app');
+  const r=app?.getBoundingClientRect();
+  const de=document.documentElement;
+  const w=Math.max(1,Math.round(r?.width||de.clientWidth||window.innerWidth||1));
+  const h=Math.max(1,Math.round(r?.height||de.clientHeight||window.innerHeight||1));
+  const mq=window.matchMedia?.('(orientation: landscape)');
+  const landscape=(mq&&typeof mq.matches==='boolean')?mq.matches:(w>h);
+  const state={w,h,landscape:!!landscape};
+  document.documentElement.classList.toggle('ma-iphone-landscape',state.landscape);
+  window.__MA_IPHONE_VIEWPORT__=state;
+  return state;
+};
+window.__maSyncIPhoneViewport=function __maSyncIPhoneViewport(){
+  return window.__maReadIPhoneLayout?.()||null;
+};
+if(__maIsIPhone){
+  window.__maSyncIPhoneViewport();
+  window.addEventListener('resize',window.__maSyncIPhoneViewport,{passive:true});
+  window.visualViewport?.addEventListener('resize',window.__maSyncIPhoneViewport,{passive:true});
+  window.addEventListener('orientationchange',()=>{
+    requestAnimationFrame(window.__maSyncIPhoneViewport);
+    for(const delay of [60,160,320,520,800])setTimeout(window.__maSyncIPhoneViewport,delay);
+  },{passive:true});
+}
 function __maShowBootError(reason){
   // Only label failures as startup errors while the app is actually booting.
   // Runtime errors after a successful boot stay in the console instead of
@@ -2079,9 +2138,10 @@ const {Manifold:ManifoldSolid,Mesh:ManifoldMesh}=manifoldWasm;
 // -----------------------------------------------------------------------------
 const container=document.getElementById('viewport');
 function viewportRenderSize(){
+  const r=container.getBoundingClientRect();
   return{
-    w:Math.max(1,container.clientWidth||innerWidth),
-    h:Math.max(1,container.clientHeight||innerHeight)
+    w:Math.max(1,Math.round(r.width||container.clientWidth||document.documentElement.clientWidth||innerWidth)),
+    h:Math.max(1,Math.round(r.height||container.clientHeight||document.documentElement.clientHeight||innerHeight))
   };
 }
 const __initialViewportSize=viewportRenderSize();
@@ -9067,7 +9127,17 @@ const dockDragHandle=document.getElementById('dockDragHandle');
 const MA_IS_IPHONE=!!window.__MA_IS_IPHONE__;
 const MA_MOBILE_DOCK_MENU=MA_IS_IPAD||MA_IS_IPHONE;
 function mobileDockMenuEnabled(){
-  return MA_IS_IPAD || (MA_IS_IPHONE && window.matchMedia?.('(orientation:landscape)').matches);
+  if(MA_IS_IPAD)return true;
+  if(!MA_IS_IPHONE)return false;
+  const phone=window.__MA_IPHONE_VIEWPORT__;
+  return phone?!!phone.landscape:document.documentElement.classList.contains('ma-iphone-landscape');
+}
+function dockLayoutViewportSize(){
+  const r=document.getElementById('app')?.getBoundingClientRect();
+  return{
+    w:Math.max(1,Math.round(r?.width||document.documentElement.clientWidth||window.innerWidth||1)),
+    h:Math.max(1,Math.round(r?.height||document.documentElement.clientHeight||window.innerHeight||1))
+  };
 }
 if(MA_MOBILE_DOCK_MENU&&dockDragHandle)dockDragHandle.remove();
 
@@ -9153,7 +9223,7 @@ function positionMainMenuButtonNearDock(){
   const br=b.getBoundingClientRect();
   const bw=Math.max(1,br.width||46),bh=Math.max(1,br.height||46);
   const vertical=maControlsDock.classList.contains('dock-vertical');
-  const margin=6,W=Math.max(1,window.innerWidth),H=Math.max(1,window.innerHeight);
+  const margin=6,{w:W,h:H}=dockLayoutViewportSize();
   let left,top;
   if(vertical){
     left=dr.left+(dr.width-bw)*.5;
@@ -9197,8 +9267,7 @@ function positionSecondaryViewPanels(){
   const dockRect=maControlsDock.getBoundingClientRect();
   const gap=10;
   const margin=6;
-  const W=Math.max(1,window.innerWidth);
-  const H=Math.max(1,window.innerHeight);
+  const {w:W,h:H}=dockLayoutViewportSize();
 
   for(const panel of panels){
     panel.classList.toggle('ma-secondary-vertical',vertical);
@@ -9257,8 +9326,7 @@ function applyDockPosition(){
   clearDockEdges();
 
   const margin=6;
-  const W=Math.max(1,window.innerWidth);
-  const H=Math.max(1,window.innerHeight);
+  const {w:W,h:H}=dockLayoutViewportSize();
 
   if(side==='left'||side==='right'){
     const minTop=margin;
@@ -9295,8 +9363,7 @@ function applyDockPosition(){
 }
 
 function edgeDistances(x,y){
-  const W=Math.max(1,window.innerWidth);
-  const H=Math.max(1,window.innerHeight);
+  const {w:W,h:H}=dockLayoutViewportSize();
   return{
     left:x,
     right:W-x,
@@ -9332,8 +9399,7 @@ function placeDockFromGrab(x,y){
   if(!maControlsDock||!dockDragState)return;
 
   const m=metrics();
-  const W=Math.max(1,window.innerWidth);
-  const H=Math.max(1,window.innerHeight);
+  const {w:W,h:H}=dockLayoutViewportSize();
   const margin=6;
 
   const side=nearestDockSide(x,y,dockDragState.side);
@@ -9406,7 +9472,7 @@ function placeDockFromGrab(x,y){
 function placeDockFromMenuGrab(x,y){
   if(!mobileDockMenuEnabled()||!maControlsDock||!dockDragState)return;
   const b=document.getElementById('mainMenuButton');if(!b)return;
-  const m=metrics(),W=Math.max(1,window.innerWidth),H=Math.max(1,window.innerHeight),margin=6;
+  const m=metrics(),{w:W,h:H}=dockLayoutViewportSize(),margin=6;
   const br=b.getBoundingClientRect();
   const bw=Math.max(1,br.width||46),bh=Math.max(1,br.height||46);
   const side=nearestDockSide(x,y,dockDragState.side);
@@ -12686,18 +12752,21 @@ function resizeViewportRenderer(){
   perspectiveCamera.updateProjectionMatrix();
   if(camera.isOrthographicCamera)updateOrthographicProjection();
   renderer.setSize(s.w,s.h,false);
+  renderer.domElement.style.width='100%';
+  renderer.domElement.style.height='100%';
   updateGraphicTargetSize();
   updateSafeFrame();
 }
 
-// v8.14 — iOS can report the old layout size for part of an orientation change.
-// Observe the actual viewport element and also settle again after rotation so the
-// camera projection can never remain stretched from the previous aspect ratio.
+// v8.16 — renderer size follows the actual viewport DOM rectangle. ResizeObserver
+// is the primary signal; delayed orientation passes only help iOS settle layout.
 let viewportResizeRAF=0;
 function scheduleViewportResize(){
+  window.__maSyncIPhoneViewport?.();
   if(viewportResizeRAF)cancelAnimationFrame(viewportResizeRAF);
   viewportResizeRAF=requestAnimationFrame(()=>{
     viewportResizeRAF=0;
+    window.__maSyncIPhoneViewport?.();
     resizeViewportRenderer();
     dockMetrics=null;
     readDockMetrics();
@@ -12712,7 +12781,7 @@ if(typeof ResizeObserver!=='undefined'){
 }
 window.addEventListener('orientationchange',()=>{
   scheduleViewportResize();
-  for(const delay of [80,180,360])setTimeout(scheduleViewportResize,delay);
+  for(const delay of [80,180,360,620,900])setTimeout(scheduleViewportResize,delay);
 },{passive:true});
 
 function animate(){requestAnimationFrame(animate);renderViewport();}animate();
@@ -12782,7 +12851,7 @@ document.addEventListener('visibilitychange',async()=>{
   standaloneResumeRefreshing=true;
   try{await saveAutosaveNow();}catch(_){ }
   const u=new URL(location.href);
-  u.searchParams.set('__ma_build',window.__MA_BUILD__||'8.14');
+  u.searchParams.set('__ma_build',window.__MA_BUILD__||'8.16');
   u.searchParams.set('__ma_resume',String(Date.now()));
   location.replace(u.href);
 });
