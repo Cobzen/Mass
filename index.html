@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.38">
+<meta name="ma-build" content="8.39">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.38</title>
+<title>MA 3D · v8.39</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.38';
+  const CURRENT_BUILD = '8.39';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -8821,6 +8821,74 @@ function shortcutActivateTransform(kind){
     showToast(`${kind.toUpperCase()} · ACTIVE`);
   }
 }
+// v8.39 — every primary dock action should also be bindable from keyboard / 8BitDo.
+// These wrappers deliberately call the same canonical functions as the UI instead
+// of duplicating state changes, so geometry/view state remains the source of truth.
+function shortcutSelectAll(){
+  const all=masses.filter(m=>m&&!m._disposed);
+  if(!all.length){showToast('NOTHING TO SELECT');return;}
+  setSelection(all);
+  selectModeActive=true;
+  moveArmed=true;
+  selectTransformMode='move';
+  updateMobileDrawUI();
+  showToast('SELECT ALL');
+}
+function shortcutClearSelection(){
+  if(selectedMasses().length)setSelection([]);
+  moveArmed=false;
+  selectTransformMode='select';
+  setSelectionGizmosEnabled(false);
+  finalizeRotatePivot(false);
+  updateMobileDrawUI();
+  showToast('DESELECTED');
+}
+function shortcutSetProjection(mode){
+  clearLatchedDrawForFunctionSwitch?.();
+  desktopAxisMoveArmed=null;
+  setProjectionMode(mode,true,null,true);
+}
+function shortcutFrameScene(){
+  if(!frameSceneInActiveView()){showToast('NOTHING TO FRAME');return;}
+  markSceneViewDirty();
+  scheduleAutosave();
+  renderViewport();
+  showToast('FRAME SCENE');
+}
+function shortcutPickWorkplane(){
+  if(workplaneLocked){showToast('WORKPLANE LOCKED');return;}
+  lockWorkplaneFromHover();
+}
+function shortcutGroundWorkplane(){
+  if(workplaneLocked){showToast('WORKPLANE LOCKED');return;}
+  setGroundPlane(true);
+  showToast('WORKPLANE · GROUND');
+}
+function shortcutToggleLightControls(mode){
+  if(viewMode!==mode){
+    applyViewMode(mode);
+    lookSettingsPanelSuppressed=false;
+  }else{
+    lookSettingsPanelSuppressed=!lookSettingsPanelSuppressed;
+  }
+  syncUnifiedLookSettings();
+  markSceneViewDirty();
+  scheduleAutosave();
+  showToast(`${mode==='shadow'?'LIGHT':'DEPTH'} CONTROLS ${lookSettingsPanelSuppressed?'OFF':'ON'}`);
+}
+function shortcutSceneSlot(slot){activateSceneSlot(slot);}
+function shortcutDeleteActiveScene(){
+  if(activeSceneId==null||!sceneAtSlot(activeSceneId)){showToast('NO ACTIVE SCENE');return;}
+  deleteSceneSlot(activeSceneId);
+}
+function shortcutTogglePanel(kind){
+  if(kind==='menu'){setMAMenuDockOpen(!maMenuDockOpen);return;}
+  if(kind==='scenes'){setSceneDockOpen(!sceneDockOpen);return;}
+  if(kind==='export'){setExportDockOpen(!exportDockOpen);return;}
+  if(kind==='safe'){openSafeFramePanel(!safeFrameDockOpen);return;}
+  if(kind==='shortcuts'){openShortcutPanel(ui.shortcutPanel?.style.display!=='flex');return;}
+  if(kind==='library'){activateLibraryNavigation();return;}
+}
 const shortcutActions=[
   {group:'Mode',id:'select',label:'Select',default:'',run:()=>shortcutActivateSelect()},
   {group:'Mode',id:'add',label:'Add · toggle',default:'KeyA',run:()=>shortcutToggleDraw(false)},
@@ -8845,17 +8913,50 @@ const shortcutActions=[
   {group:'Edit',id:'duplicate',label:'Duplicate selection',default:'Ctrl+KeyD',run:()=>duplicateSelected()},
   {group:'Edit',id:'group',label:'Group',default:'Ctrl+KeyG',run:()=>groupSelected()},
   {group:'Edit',id:'ungroup',label:'Ungroup',default:'Ctrl+Shift+KeyG',run:()=>ungroupSelected()},
+  {group:'Edit',id:'selectAll',label:'Select all',default:'',run:()=>shortcutSelectAll()},
+  {group:'Edit',id:'deselectAll',label:'Deselect all',default:'',run:()=>shortcutClearSelection()},
+
+  {group:'View',id:'projectionPerspective',label:'Perspective · P',default:'',run:()=>shortcutSetProjection('perspective')},
+  {group:'View',id:'projectionX',label:'Ortho X',default:'',run:()=>shortcutSetProjection('x')},
+  {group:'View',id:'projectionY',label:'Ortho Y',default:'',run:()=>shortcutSetProjection('y')},
+  {group:'View',id:'projectionZ',label:'Ortho Z',default:'',run:()=>shortcutSetProjection('z')},
+  {group:'View',id:'frameScene',label:'Frame scene',default:'',run:()=>shortcutFrameScene()},
+  {group:'View',id:'toggleOutlines',label:'Outlines on / off',default:'',run:()=>toggleOutlinesFromMoodJoystick()},
+
+  {group:'Workplane',id:'toggleWorkplaneLock',label:'Lock / unlock plane',default:'',run:()=>toggleWorkplaneLock()},
+  {group:'Workplane',id:'pickWorkplane',label:'Pick plane under cursor',default:'',run:()=>shortcutPickWorkplane()},
+  {group:'Workplane',id:'groundWorkplane',label:'Ground plane',default:'',run:()=>shortcutGroundWorkplane()},
 
   {group:'Mood',id:'viewWorkspace',label:'Workspace',default:'Digit1',run:()=>{applyViewMode('workspace');markSceneViewDirty();scheduleAutosave();}},
   {group:'Mood',id:'viewMasse',label:'Masse',default:'Digit2',run:()=>{applyViewMode('notan');markSceneViewDirty();scheduleAutosave();}},
   {group:'Mood',id:'viewLight',label:'Light',default:'Digit3',run:()=>{applyViewMode('shadow');markSceneViewDirty();scheduleAutosave();}},
   {group:'Mood',id:'viewDepth',label:'Depth',default:'Digit4',run:()=>{applyViewMode('depth');markSceneViewDirty();scheduleAutosave();}},
-  {group:'Mood',id:'toggleSafeFrame',label:'Safe Frame on / off',default:'',run:()=>toggleSafeFrame()},
+  {group:'Mood',id:'lightControls',label:'Light controls on / off',default:'',run:()=>shortcutToggleLightControls('shadow')},
+  {group:'Mood',id:'depthControls',label:'Depth controls on / off',default:'',run:()=>shortcutToggleLightControls('depth')},
+
+  {group:'Safe Frame',id:'toggleSafeFrame',label:'Safe Frame on / off',default:'',run:()=>toggleSafeFrame()},
+  {group:'Safe Frame',id:'safeRatio1x1',label:'Ratio 1:1',default:'',run:()=>toggleSafeFrameAspectOrientation('1:1')},
+  {group:'Safe Frame',id:'safeRatio4x3',label:'Ratio 4:3 ↔ 3:4',default:'',run:()=>toggleSafeFrameAspectOrientation('4:3')},
+  {group:'Safe Frame',id:'safeRatio3x2',label:'Ratio 3:2 ↔ 2:3',default:'',run:()=>toggleSafeFrameAspectOrientation('3:2')},
+  {group:'Safe Frame',id:'safeRatio16x9',label:'Ratio 16:9 ↔ 9:16',default:'',run:()=>toggleSafeFrameAspectOrientation('16:9')},
+  {group:'Safe Frame',id:'safeRatio21x9',label:'Ratio 21:9 ↔ 9:21',default:'',run:()=>toggleSafeFrameAspectOrientation('21:9')},
 
   {group:'Scenes',id:'scenePrevious',label:'Previous scene',default:'',run:()=>cycleSavedScene(-1)},
   {group:'Scenes',id:'sceneNext',label:'Next scene',default:'',run:()=>cycleSavedScene(1)},
   {group:'Scenes',id:'sceneAdd',label:'Save next empty scene',default:'',run:()=>addScene()},
   {group:'Scenes',id:'sceneUpdate',label:'Update active scene',default:'',run:()=>updateActiveScene()},
+  {group:'Scenes',id:'sceneDelete',label:'Delete active scene',default:'',run:()=>shortcutDeleteActiveScene()},
+  {group:'Scenes',id:'scene1',label:'Scene 1 · recall / save',default:'',run:()=>shortcutSceneSlot(1)},
+  {group:'Scenes',id:'scene2',label:'Scene 2 · recall / save',default:'',run:()=>shortcutSceneSlot(2)},
+  {group:'Scenes',id:'scene3',label:'Scene 3 · recall / save',default:'',run:()=>shortcutSceneSlot(3)},
+  {group:'Scenes',id:'scene4',label:'Scene 4 · recall / save',default:'',run:()=>shortcutSceneSlot(4)},
+  {group:'Scenes',id:'scene5',label:'Scene 5 · recall / save',default:'',run:()=>shortcutSceneSlot(5)},
+
+  {group:'Panels',id:'panelMenu',label:'MA menu on / off',default:'',run:()=>shortcutTogglePanel('menu')},
+  {group:'Panels',id:'panelScenes',label:'Scenes panel on / off',default:'',run:()=>shortcutTogglePanel('scenes')},
+  {group:'Panels',id:'panelExport',label:'Export panel on / off',default:'',run:()=>shortcutTogglePanel('export')},
+  {group:'Panels',id:'panelSafe',label:'Safe Frame controls on / off',default:'',run:()=>shortcutTogglePanel('safe')},
+  {group:'Panels',id:'panelLibrary',label:'Project Library',default:'',run:()=>shortcutTogglePanel('library')},
 
   {group:'Output',id:'sharePNG',label:'View PNG',default:'',run:()=>shareCurrentPNG()},
   {group:'Output',id:'exportProcreatePSD',label:'View PSD',default:'',run:()=>exportProcreatePSD()},
@@ -8941,6 +9042,11 @@ function cycleSavedScene(dir){
 }
 function commitShortcutLearn(id,e){
   const binding=shortcutFromEvent(e);
+  // One physical input maps to one action. Rebinding automatically frees the
+  // same key/button from any older action instead of leaving an invisible conflict.
+  for(const a of shortcutActions){
+    if(a.id!==id&&shortcutBindings[a.id]===binding)shortcutBindings[a.id]='';
+  }
   shortcutBindings[id]=binding;saveShortcutBindings();showShortcutInput(e,'RECEIVED');shortcutCaptureActionId=null;
   if(ui.shortcutCaptureHint)ui.shortcutCaptureHint.style.display='none';renderShortcutList();showToast(`SHORTCUT · ${shortcutLabel(binding)}`);
 }
@@ -12957,7 +13063,9 @@ document.addEventListener('gesturechange',e=>e.preventDefault(),{passive:false})
 let ctrlWorkplaneTap=false;
 window.addEventListener('keydown',e=>{
   if(shortcutCaptureActionId){handleShortcutCapture(e);return;}
-  if(ui.shortcutPanel?.style.display==='flex'){e.preventDefault();e.stopPropagation();showShortcutInput(e,'TEST INPUT');return;}
+  // ESC remains the global backtrack even when the Shortcuts panel is open.
+  // Other keys stay in TEST INPUT mode while that panel is visible.
+  if(ui.shortcutPanel?.style.display==='flex'&&e.key!=='Escape'){e.preventDefault();e.stopPropagation();showShortcutInput(e,'TEST INPUT');return;}
   if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;
   const k=e.key.toLowerCase();
 
