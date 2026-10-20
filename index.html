@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.18">
+<meta name="ma-build" content="8.30">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.18</title>
+<title>MA 3D · v8.30</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.18';
+  const CURRENT_BUILD = '8.30';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -173,8 +173,9 @@ canvas{display:block;width:100%;height:100%;outline:none}
   display:none;
   pointer-events:none;
   z-index:118;
-  border:1.5px solid #242424;
-  background:rgba(36,36,36,.07);
+  border:2px solid #294a9b;
+  background:rgba(41,74,155,.16);
+  box-shadow:inset 0 0 0 .5px rgba(255,255,255,.72);
 }
 #brushSizer{
   position:fixed;
@@ -300,6 +301,9 @@ canvas{display:block;width:100%;height:100%;outline:none}
 .maJoystick.locking .joyKnob{background:#dfe9e3}
 /* v8.02 — a locked drawing plane is shown as a slightly darker VIEW control. */
 #viewJoystick.workplaneLocked{background:#e1e1dc}
+/* v8.28 — the real Look/Mood joystick mirrors the global Outlines state.
+   Grey = outlines enabled; normal control fill = outlines disabled. */
+#lookJoystick.outlinesOff{background:#e1e1dc}
 .joyLabel{
   position:absolute;
   z-index:2;
@@ -1601,11 +1605,11 @@ html.ma-iphone #maModeBar #mobileSizeDrag, html.ma-ipad #maModeBar #mobileSizeDr
 html.ma-iphone #maModeBar #drawAddHoldBtn, html.ma-ipad #maModeBar #drawAddHoldBtn{order:1;}
 html.ma-iphone #maModeBar #drawEraseHoldBtn, html.ma-ipad #maModeBar #drawEraseHoldBtn{order:2;}
 html.ma-iphone #maModeBar #selectHoldBtn, html.ma-ipad #maModeBar #selectHoldBtn{order:3;}
-html.ma-draw-mobile #viewJoystick.iphoneBrushChoiceMode .joyLabel, html.ma-draw-mobile #viewJoystick.iphoneBrushChoiceMode .joyKnob, html.ma-draw-mobile #lookJoystick.iphoneBrushChoiceMode .joyLabel, html.ma-draw-mobile #lookJoystick.iphoneBrushChoiceMode .joyKnob{
+html.ma-unified-ui #viewJoystick.iphoneBrushChoiceMode .joyLabel, html.ma-unified-ui #viewJoystick.iphoneBrushChoiceMode .joyKnob, html.ma-unified-ui #lookJoystick.iphoneBrushChoiceMode .joyLabel, html.ma-unified-ui #lookJoystick.iphoneBrushChoiceMode .joyKnob{
   opacity:0 !important;
   pointer-events:none !important;
 }
-html.ma-draw-mobile #viewJoystick.iphoneBrushChoiceMode::after, html.ma-draw-mobile #lookJoystick.iphoneBrushChoiceMode::after{
+html.ma-unified-ui #viewJoystick.iphoneBrushChoiceMode::after, html.ma-unified-ui #lookJoystick.iphoneBrushChoiceMode::after{
   content:attr(data-brush-label);
   position:absolute;
   inset:0;
@@ -1622,17 +1626,17 @@ html.ma-draw-mobile #viewJoystick.iphoneBrushChoiceMode::after, html.ma-draw-mob
 }
 /* v7.94 — while ADD/ERASE exposes the six brush choices, every brush name
    uses the exact same type size regardless of which physical circle it occupies. */
-html.ma-draw-mobile #maModeBar.brushChoiceDockMode .primaryLabel{
+html.ma-unified-ui #maModeBar.brushChoiceDockMode .primaryLabel{
   font-size:7px !important;
   font-weight:500 !important;
   letter-spacing:.025em !important;
   line-height:1 !important;
 }
-html.ma-draw-mobile #viewJoystick.iphoneBrushChoiceMode.brushChoiceActive, html.ma-draw-mobile #lookJoystick.iphoneBrushChoiceMode.brushChoiceActive{
+html.ma-unified-ui #viewJoystick.iphoneBrushChoiceMode.brushChoiceActive, html.ma-unified-ui #lookJoystick.iphoneBrushChoiceMode.brushChoiceActive{
   background:var(--ink) !important;
   border-color:var(--ink) !important;
 }
-html.ma-draw-mobile #viewJoystick.iphoneBrushChoiceMode.brushChoiceActive::after, html.ma-draw-mobile #lookJoystick.iphoneBrushChoiceMode.brushChoiceActive::after{
+html.ma-unified-ui #viewJoystick.iphoneBrushChoiceMode.brushChoiceActive::after, html.ma-unified-ui #lookJoystick.iphoneBrushChoiceMode.brushChoiceActive::after{
   color:#fff !important;
 }
 </style>
@@ -1641,7 +1645,7 @@ html.ma-draw-mobile #viewJoystick.iphoneBrushChoiceMode.brushChoiceActive::after
 <style id="ma-secondary-docks">
 /* Canonical secondary dock: Light, Depth and Safe Frame share one component
    and one follower layout on iPhone and iPad. */
-html.ma-draw-mobile #sunDirPanel, html.ma-draw-mobile #depthRangePanel, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel{
+html.ma-unified-ui #sunDirPanel, html.ma-unified-ui #depthRangePanel, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel{
   position:fixed !important;
   display:none;
   box-sizing:border-box !important;
@@ -1655,15 +1659,15 @@ html.ma-draw-mobile #sunDirPanel, html.ma-draw-mobile #depthRangePanel, html.ma-
   -webkit-backdrop-filter:none !important;
   overflow:hidden !important;
 }
-html.ma-draw-mobile #sunDirPanel > .maSecondaryInner, html.ma-draw-mobile #depthRangePanel > .maSecondaryInner, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel > .maSecondaryInner{
+html.ma-unified-ui #sunDirPanel > .maSecondaryInner, html.ma-unified-ui #depthRangePanel > .maSecondaryInner, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel > .maSecondaryInner{
   box-sizing:border-box !important;
 }
-html.ma-draw-mobile #sunDirPanel .head, html.ma-draw-mobile #depthRangePanel .head, html.ma-draw-mobile #depthRangePanel .miniNote, html.ma-draw-mobile #depthRangePanel .row{
+html.ma-unified-ui #sunDirPanel .head, html.ma-unified-ui #depthRangePanel .head, html.ma-unified-ui #depthRangePanel .miniNote, html.ma-unified-ui #depthRangePanel .row{
   display:none !important;
 }
 
 /* Horizontal follower — identical on iPhone and iPad. */
-html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal, html.ma-draw-mobile #depthRangePanel.ma-secondary-horizontal, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal{
+html.ma-unified-ui #sunDirPanel.ma-secondary-horizontal, html.ma-unified-ui #depthRangePanel.ma-secondary-horizontal, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal{
   width:var(--ma-dock-length) !important;
   min-width:var(--ma-dock-length) !important;
   max-width:var(--ma-dock-length) !important;
@@ -1672,7 +1676,7 @@ html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal, html.ma-draw-mobile #d
   max-height:var(--ma-dock-cross) !important;
   padding:5px 13px !important;
 }
-html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal > .maSecondaryInner, html.ma-draw-mobile #depthRangePanel.ma-secondary-horizontal > .maSecondaryInner, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal > .maSecondaryInner{
+html.ma-unified-ui #sunDirPanel.ma-secondary-horizontal > .maSecondaryInner, html.ma-unified-ui #depthRangePanel.ma-secondary-horizontal > .maSecondaryInner, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal > .maSecondaryInner{
   position:relative !important;
   inset:auto !important;
   width:100% !important;
@@ -1687,7 +1691,7 @@ html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal > .maSecondaryInner, ht
   padding:0 !important;
   transform:none !important;
 }
-html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal label, html.ma-draw-mobile #depthRangePanel.ma-secondary-horizontal label, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal label{
+html.ma-unified-ui #sunDirPanel.ma-secondary-horizontal label, html.ma-unified-ui #depthRangePanel.ma-secondary-horizontal label, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal label{
   position:static !important;
   display:flex !important;
   flex-direction:row !important;
@@ -1707,16 +1711,16 @@ html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal label, html.ma-draw-mob
   transform:none !important;
   pointer-events:none !important;
 }
-html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal label span, html.ma-draw-mobile #depthRangePanel.ma-secondary-horizontal label span, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal label span{
+html.ma-unified-ui #sunDirPanel.ma-secondary-horizontal label span, html.ma-unified-ui #depthRangePanel.ma-secondary-horizontal label span, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal label span{
   margin:0 0 0 5px !important;
   color:#222 !important;
   font-size:7px !important;
 }
-html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal label:nth-of-type(1), html.ma-draw-mobile #depthRangePanel.ma-secondary-horizontal label:nth-of-type(1), html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal label:nth-of-type(1){grid-column:1 !important;grid-row:1 !important}
-html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal input:nth-of-type(1), html.ma-draw-mobile #depthRangePanel.ma-secondary-horizontal input:nth-of-type(1), html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal input:nth-of-type(1){grid-column:1 !important;grid-row:2 !important}
-html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal label:nth-of-type(2), html.ma-draw-mobile #depthRangePanel.ma-secondary-horizontal label:nth-of-type(2), html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal label:nth-of-type(2){grid-column:2 !important;grid-row:1 !important}
-html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal input:nth-of-type(2), html.ma-draw-mobile #depthRangePanel.ma-secondary-horizontal input:nth-of-type(2), html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal input:nth-of-type(2){grid-column:2 !important;grid-row:2 !important}
-html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal input[type=range], html.ma-draw-mobile #depthRangePanel.ma-secondary-horizontal input[type=range], html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal input[type=range]{
+html.ma-unified-ui #sunDirPanel.ma-secondary-horizontal label:nth-of-type(1), html.ma-unified-ui #depthRangePanel.ma-secondary-horizontal label:nth-of-type(1), html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal label:nth-of-type(1){grid-column:1 !important;grid-row:1 !important}
+html.ma-unified-ui #sunDirPanel.ma-secondary-horizontal input:nth-of-type(1), html.ma-unified-ui #depthRangePanel.ma-secondary-horizontal input:nth-of-type(1), html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal input:nth-of-type(1){grid-column:1 !important;grid-row:2 !important}
+html.ma-unified-ui #sunDirPanel.ma-secondary-horizontal label:nth-of-type(2), html.ma-unified-ui #depthRangePanel.ma-secondary-horizontal label:nth-of-type(2), html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal label:nth-of-type(2){grid-column:2 !important;grid-row:1 !important}
+html.ma-unified-ui #sunDirPanel.ma-secondary-horizontal input:nth-of-type(2), html.ma-unified-ui #depthRangePanel.ma-secondary-horizontal input:nth-of-type(2), html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal input:nth-of-type(2){grid-column:2 !important;grid-row:2 !important}
+html.ma-unified-ui #sunDirPanel.ma-secondary-horizontal input[type=range], html.ma-unified-ui #depthRangePanel.ma-secondary-horizontal input[type=range], html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal input[type=range]{
   position:static !important;
   display:block !important;
   width:100% !important;
@@ -1730,7 +1734,7 @@ html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal input[type=range], html
 }
 
 /* Vertical follower — same component simply rotated into the dock orientation. */
-html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical, html.ma-draw-mobile #depthRangePanel.ma-secondary-vertical, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical{
+html.ma-unified-ui #sunDirPanel.ma-secondary-vertical, html.ma-unified-ui #depthRangePanel.ma-secondary-vertical, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical{
   width:var(--ma-dock-cross) !important;
   min-width:var(--ma-dock-cross) !important;
   max-width:var(--ma-dock-cross) !important;
@@ -1739,7 +1743,7 @@ html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical, html.ma-draw-mobile #dep
   max-height:var(--ma-dock-length) !important;
   padding:0 !important;
 }
-html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical > .maSecondaryInner, html.ma-draw-mobile #depthRangePanel.ma-secondary-vertical > .maSecondaryInner, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical > .maSecondaryInner{
+html.ma-unified-ui #sunDirPanel.ma-secondary-vertical > .maSecondaryInner, html.ma-unified-ui #depthRangePanel.ma-secondary-vertical > .maSecondaryInner, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical > .maSecondaryInner{
   position:absolute !important;
   inset:0 !important;
   width:100% !important;
@@ -1748,7 +1752,7 @@ html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical > .maSecondaryInner, html
   padding:0 !important;
   transform:none !important;
 }
-html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical label, html.ma-draw-mobile #depthRangePanel.ma-secondary-vertical label, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical label{
+html.ma-unified-ui #sunDirPanel.ma-secondary-vertical label, html.ma-unified-ui #depthRangePanel.ma-secondary-vertical label, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical label{
   position:absolute !important;
   left:12px !important;
   width:104px !important;
@@ -1769,12 +1773,12 @@ html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical label, html.ma-draw-mobil
   transform-origin:center !important;
   pointer-events:none !important;
 }
-html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical label span, html.ma-draw-mobile #depthRangePanel.ma-secondary-vertical label span, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical label span{
+html.ma-unified-ui #sunDirPanel.ma-secondary-vertical label span, html.ma-unified-ui #depthRangePanel.ma-secondary-vertical label span, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical label span{
   margin:0 !important;
   color:#222 !important;
   font-size:7px !important;
 }
-html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical input[type=range], html.ma-draw-mobile #depthRangePanel.ma-secondary-vertical input[type=range], html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical input[type=range]{
+html.ma-unified-ui #sunDirPanel.ma-secondary-vertical input[type=range], html.ma-unified-ui #depthRangePanel.ma-secondary-vertical input[type=range], html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical input[type=range]{
   position:absolute !important;
   left:50% !important;
   width:calc((var(--ma-dock-length) - 62px) / 2) !important;
@@ -1786,24 +1790,24 @@ html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical input[type=range], html.m
   accent-color:#272726 !important;
   touch-action:none !important;
 }
-html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical label:nth-of-type(1), html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical #sunDirAzimuth, html.ma-draw-mobile #depthRangePanel.ma-secondary-vertical label:nth-of-type(1), html.ma-draw-mobile #depthRangePanel.ma-secondary-vertical #depthNear, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical label:nth-of-type(1), html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical #safeFrameScale{top:27% !important}
-html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical label:nth-of-type(2), html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical #sunDirElevation, html.ma-draw-mobile #depthRangePanel.ma-secondary-vertical label:nth-of-type(2), html.ma-draw-mobile #depthRangePanel.ma-secondary-vertical #depthFar, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical label:nth-of-type(2), html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical #safeFrameMask{top:73% !important}
+html.ma-unified-ui #sunDirPanel.ma-secondary-vertical label:nth-of-type(1), html.ma-unified-ui #sunDirPanel.ma-secondary-vertical #sunDirAzimuth, html.ma-unified-ui #depthRangePanel.ma-secondary-vertical label:nth-of-type(1), html.ma-unified-ui #depthRangePanel.ma-secondary-vertical #depthNear, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical label:nth-of-type(1), html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical #safeFrameScale{top:27% !important}
+html.ma-unified-ui #sunDirPanel.ma-secondary-vertical label:nth-of-type(2), html.ma-unified-ui #sunDirPanel.ma-secondary-vertical #sunDirElevation, html.ma-unified-ui #depthRangePanel.ma-secondary-vertical label:nth-of-type(2), html.ma-unified-ui #depthRangePanel.ma-secondary-vertical #depthFar, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical label:nth-of-type(2), html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical #safeFrameMask{top:73% !important}
 
-html.ma-draw-mobile #sunDirPanel, html.ma-draw-mobile #depthRangePanel, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel, html.ma-draw-mobile #sunDirPanel input, html.ma-draw-mobile #depthRangePanel input, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel input{
+html.ma-unified-ui #sunDirPanel, html.ma-unified-ui #depthRangePanel, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel, html.ma-unified-ui #sunDirPanel input, html.ma-unified-ui #depthRangePanel input, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel input{
   touch-action:none !important;
   overscroll-behavior:contain;
 }
 
 
 /* The outer capsule is only a shell; all control layout lives in .maSecondaryInner. */
-html.ma-draw-mobile #sunDirPanel.ma-secondary-horizontal, html.ma-draw-mobile #sunDirPanel.ma-secondary-vertical, html.ma-draw-mobile #depthRangePanel.ma-secondary-horizontal, html.ma-draw-mobile #depthRangePanel.ma-secondary-vertical, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical{
+html.ma-unified-ui #sunDirPanel.ma-secondary-horizontal, html.ma-unified-ui #sunDirPanel.ma-secondary-vertical, html.ma-unified-ui #depthRangePanel.ma-secondary-horizontal, html.ma-unified-ui #depthRangePanel.ma-secondary-vertical, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-horizontal, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel.ma-secondary-vertical{
   grid-template-columns:minmax(0,1fr) !important;
   grid-template-rows:minmax(0,1fr) !important;
   gap:0 !important;
   align-items:stretch !important;
   justify-items:stretch !important;
 }
-html.ma-draw-mobile #sunDirPanel > .maSecondaryInner, html.ma-draw-mobile #depthRangePanel > .maSecondaryInner, html.ma-draw-mobile #safeFramePanel.maSafeFrameDockPanel > .maSecondaryInner{
+html.ma-unified-ui #sunDirPanel > .maSecondaryInner, html.ma-unified-ui #depthRangePanel > .maSecondaryInner, html.ma-unified-ui #safeFramePanel.maSafeFrameDockPanel > .maSecondaryInner{
   grid-column:1 / -1 !important;
   grid-row:1 / -1 !important;
   min-width:0 !important;
@@ -1892,22 +1896,96 @@ html.ma-iphone.ma-iphone-landscape #mainMenuButton{
 /* v7.95 — all text inside the six-circle dock uses the same size as the
    ADD / ERASE brush-choice labels. This is typography only; interaction and
    physical mappings remain unchanged. */
-html.ma-draw-mobile #maBottomDock .primaryLabel,
-html.ma-draw-mobile #maBottomDock .joyLabel,
-html.ma-draw-mobile #viewJoystick.safeFrameRatioMode::after,
-html.ma-draw-mobile #lookJoystick.safeFrameRatioMode::after,
-html.ma-draw-mobile #viewJoystick.maMenuDockMode::after,
-html.ma-draw-mobile #lookJoystick.maMenuDockMode::after,
-html.ma-draw-mobile #viewJoystick.exportDockMode::after,
-html.ma-draw-mobile #lookJoystick.exportDockMode::after,
-html.ma-draw-mobile #viewJoystick.sceneDockMode::after,
-html.ma-draw-mobile #lookJoystick.sceneDockMode::after,
-html.ma-draw-mobile #viewJoystick.iphoneBrushChoiceMode::after,
-html.ma-draw-mobile #lookJoystick.iphoneBrushChoiceMode::after {
+html.ma-unified-ui #maBottomDock .primaryLabel,
+html.ma-unified-ui #maBottomDock .joyLabel,
+html.ma-unified-ui #viewJoystick.safeFrameRatioMode::after,
+html.ma-unified-ui #lookJoystick.safeFrameRatioMode::after,
+html.ma-unified-ui #viewJoystick.maMenuDockMode::after,
+html.ma-unified-ui #lookJoystick.maMenuDockMode::after,
+html.ma-unified-ui #viewJoystick.exportDockMode::after,
+html.ma-unified-ui #lookJoystick.exportDockMode::after,
+html.ma-unified-ui #viewJoystick.sceneDockMode::after,
+html.ma-unified-ui #lookJoystick.sceneDockMode::after,
+html.ma-unified-ui #viewJoystick.iphoneBrushChoiceMode::after,
+html.ma-unified-ui #lookJoystick.iphoneBrushChoiceMode::after {
   font-size:7px !important;
   font-weight:500 !important;
   letter-spacing:.025em !important;
   line-height:1 !important;
+}
+</style>
+
+<style id="ma-v826-desktop-ui">
+/* v8.26 — desktop mirrors the iPad dock shell: the three-line button trails the
+   six-circle dock and doubles as its drag handle. Mouse can click joystick
+   letters directly; the old protruding relocation tab is not used on desktop. */
+html:not(.ma-draw-mobile) #dockDragHandle{display:none !important;}
+html:not(.ma-draw-mobile) #mainMenuButton{
+  left:auto !important;right:auto !important;top:auto !important;bottom:auto !important;
+  touch-action:none !important;cursor:grab !important;
+}
+html:not(.ma-draw-mobile) #mainMenuButton.dockMenuDragging{cursor:grabbing !important;}
+html:not(.ma-draw-mobile) #viewJoystick .joyLabel,
+html:not(.ma-draw-mobile) #lookJoystick .joyLabel{
+  /* v8.27 — fixed cardinal hit boxes. The old negative margins enlarged the
+     clickable letters by physically shifting their boxes, which made X/Y/M/D
+     look uneven. Keep the visual center and hit center identical instead. */
+  width:16px !important;
+  height:16px !important;
+  margin:0 !important;
+  padding:0 !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  line-height:16px !important;
+  pointer-events:auto !important;
+  cursor:pointer;
+}
+html:not(.ma-draw-mobile) #viewJoystick .joyUp,
+html:not(.ma-draw-mobile) #lookJoystick .joyUp{
+  left:calc(50% - 8px) !important; top:3px !important; transform:none !important;
+}
+html:not(.ma-draw-mobile) #viewJoystick .joyDown,
+html:not(.ma-draw-mobile) #lookJoystick .joyDown{
+  left:calc(50% - 8px) !important; bottom:3px !important; transform:none !important;
+}
+html:not(.ma-draw-mobile) #viewJoystick .joyLeft,
+html:not(.ma-draw-mobile) #lookJoystick .joyLeft{
+  left:3px !important; top:calc(50% - 8px) !important; transform:none !important;
+}
+html:not(.ma-draw-mobile) #viewJoystick .joyRight,
+html:not(.ma-draw-mobile) #lookJoystick .joyRight{
+  right:3px !important; top:calc(50% - 8px) !important; transform:none !important;
+}
+
+/* v8.30 — contextual dock modes own the whole physical circle on desktop.
+   v8.27 deliberately made joystick labels display:flex for larger mouse hit targets;
+   that rule was more specific than the older contextual display:none rules, so
+   X/Y/Z/P and M/L/D/W leaked through LIBRARY / SCENES and other dock labels.
+   Hide both the cardinal labels and center knob whenever a joystick circle is
+   temporarily repurposed. The mode-specific ::after label remains authoritative. */
+html:not(.ma-draw-mobile) #viewJoystick.maMenuDockMode .joyLabel,
+html:not(.ma-draw-mobile) #lookJoystick.maMenuDockMode .joyLabel,
+html:not(.ma-draw-mobile) #viewJoystick.maMenuDockMode .joyKnob,
+html:not(.ma-draw-mobile) #lookJoystick.maMenuDockMode .joyKnob,
+html:not(.ma-draw-mobile) #viewJoystick.exportDockMode .joyLabel,
+html:not(.ma-draw-mobile) #lookJoystick.exportDockMode .joyLabel,
+html:not(.ma-draw-mobile) #viewJoystick.exportDockMode .joyKnob,
+html:not(.ma-draw-mobile) #lookJoystick.exportDockMode .joyKnob,
+html:not(.ma-draw-mobile) #viewJoystick.sceneDockMode .joyLabel,
+html:not(.ma-draw-mobile) #lookJoystick.sceneDockMode .joyLabel,
+html:not(.ma-draw-mobile) #viewJoystick.sceneDockMode .joyKnob,
+html:not(.ma-draw-mobile) #lookJoystick.sceneDockMode .joyKnob,
+html:not(.ma-draw-mobile) #viewJoystick.safeFrameRatioMode .joyLabel,
+html:not(.ma-draw-mobile) #lookJoystick.safeFrameRatioMode .joyLabel,
+html:not(.ma-draw-mobile) #viewJoystick.safeFrameRatioMode .joyKnob,
+html:not(.ma-draw-mobile) #lookJoystick.safeFrameRatioMode .joyKnob,
+html:not(.ma-draw-mobile) #viewJoystick.iphoneBrushChoiceMode .joyLabel,
+html:not(.ma-draw-mobile) #lookJoystick.iphoneBrushChoiceMode .joyLabel,
+html:not(.ma-draw-mobile) #viewJoystick.iphoneBrushChoiceMode .joyKnob,
+html:not(.ma-draw-mobile) #lookJoystick.iphoneBrushChoiceMode .joyKnob{
+  display:none !important;
+  pointer-events:none !important;
 }
 </style>
 </head>
@@ -2159,7 +2237,8 @@ function viewportRenderSize(){
 }
 const __initialViewportSize=viewportRenderSize();
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xffffff);
-const perspectiveCamera=new THREE.PerspectiveCamera(35,__initialViewportSize.w/__initialViewportSize.h,.01,2000);
+const DEFAULT_PERSPECTIVE_FOV=50;
+const perspectiveCamera=new THREE.PerspectiveCamera(DEFAULT_PERSPECTIVE_FOV,__initialViewportSize.w/__initialViewportSize.h,.01,2000);
 perspectiveCamera.position.set(7,5.5,9);
 const orthoCamera=new THREE.OrthographicCamera(-5,5,5,-5,.01,2000);
 let camera=perspectiveCamera;
@@ -2171,6 +2250,17 @@ let cameraDistance=camera.position.distanceTo(cameraTarget);
 let cameraAzimuth=Math.atan2(camera.position.x-cameraTarget.x,camera.position.z-cameraTarget.z);
 let cameraElevation=Math.asin((camera.position.y-cameraTarget.y)/cameraDistance);
 camera.lookAt(cameraTarget);
+
+// v8.26 — FOV is the camera source of truth. Three.js focalLength depends on
+// film height/aspect, so persisting focal length made the same shot become much
+// flatter on a widescreen PC after being saved on iPad. New files/scenes store
+// vertical FOV directly. Legacy snapshots (which have no fov field) migrate to
+// the new 50° perspective instead of inheriting the aspect-dependent old lens.
+function restorePerspectiveLens(state){
+  const saved=Number.isFinite(+state?.fov)?+state.fov:DEFAULT_PERSPECTIVE_FOV;
+  perspectiveCamera.fov=Math.max(15,Math.min(100,saved));
+  perspectiveCamera.updateProjectionMatrix();
+}
 
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,alpha:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(__initialViewportSize.w,__initialViewportSize.h);renderer.setClearColor(0xffffff,1);renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -2501,7 +2591,7 @@ scene.add(groundSurface);
 
 const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();
 const worldY=new THREE.Vector3(0,1,0);
-const accent=0x65e5a8,fill=0xb8b8b8,outline=0x242424;
+const accent=0x65e5a8,fill=0xb8b8b8,outline=0x242424,selectionRoyal=0x5e6b84;
 let masses=[],nextId=1,nextGroupId=1,selected=null,selectedIds=new Set(),activeTool='select',activeDepth=1.5,drawMode='add',outlinesEnabled=true,thumbnail=false,activeBrushContainerId=null,activeBrushContainerType=null;
 let brushWidthValue=1.5,brushDepthValue=1.5;
 let currentProjectName='untitled',autosaveTimer=null;
@@ -3016,7 +3106,7 @@ function applyExportCameraSnapshot(v){
   const c=v?.camera;if(!c)return;
   if(Array.isArray(c.position))perspectiveCamera.position.fromArray(c.position);
   if(Array.isArray(c.target))perspectiveTarget.fromArray(c.target);
-  if(Number.isFinite(+c.focalLength))perspectiveCamera.setFocalLength(+c.focalLength);
+  restorePerspectiveLens(c);
   const projection=(c.projectionMode==='x'||c.projectionMode==='y'||c.projectionMode==='z'||c.projectionMode==='iso')?c.projectionMode:'perspective';
   const orthoTarget=Array.isArray(c.orthoTarget)?new THREE.Vector3().fromArray(c.orthoTarget):null;
   if(projection==='perspective'){
@@ -3244,6 +3334,7 @@ function renderDepthViewport(){
 }
 function isGraphicBW(){return viewMode==='shadow';}
 function renderViewport(){
+  syncSelectionStippleVisibility();
   syncUnlockedViewWorkplane();
   if(viewPlaneSectionGroup.visible)syncViewPlaneSectionPreview();
   if(viewMode==='depth'){
@@ -4133,6 +4224,72 @@ function outlineGeometryForMass(g,type){
   return edges;
 }
 function materialForMass(type='draw'){return new THREE.MeshLambertMaterial({color:fill,flatShading:!(type==='sphere'||type==='circle'||type==='curve'),side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});}
+// v8.25 — SketchUp-style selection stipple with near-pixel-size muted royal blue-gray points. This is a pure render overlay:
+// it shares the real mass geometry, never modifies it, and is excluded from raycasts.
+function makeSelectionStippleMaterial(){
+  return new THREE.ShaderMaterial({
+    uniforms:{
+      uColor:{value:new THREE.Color(selectionRoyal)},
+      uPixelRatio:{value:Math.max(1,renderer.getPixelRatio())}
+    },
+    vertexShader:`
+      void main(){
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+      }
+    `,
+    fragmentShader:`
+      uniform vec3 uColor;
+      uniform float uPixelRatio;
+      void main(){
+        vec2 cssPx=gl_FragCoord.xy/max(1.0,uPixelRatio);
+        vec2 cell=mod(cssPx,vec2(6.0));
+        vec2 d=cell-vec2(3.0);
+        if(dot(d,d)>0.28)discard;
+        gl_FragColor=vec4(uColor,0.92);
+      }
+    `,
+    transparent:true,
+    depthTest:true,
+    depthWrite:false,
+    side:THREE.FrontSide,
+    polygonOffset:true,
+    polygonOffsetFactor:-1,
+    polygonOffsetUnits:-1
+  });
+}
+function ensureSelectionStipple(m){
+  if(!m)return null;
+  if(!m.selectionStipple){
+    const overlay=new THREE.Mesh(m.mesh.geometry,makeSelectionStippleMaterial());
+    overlay.renderOrder=3;
+    overlay.castShadow=false;
+    overlay.receiveShadow=false;
+    overlay.frustumCulled=true;
+    overlay.userData.ignoreModelRaycast=true;
+    overlay.visible=false;
+    m.group.add(overlay);
+    m.selectionStipple=overlay;
+  }else if(m.selectionStipple.geometry!==m.mesh.geometry){
+    // Geometry is source of truth: the overlay always follows the current mesh.
+    // Do not dispose here because this geometry is shared with m.mesh.
+    m.selectionStipple.geometry=m.mesh.geometry;
+  }
+  const mat=m.selectionStipple.material;
+  if(mat?.uniforms?.uPixelRatio)mat.uniforms.uPixelRatio.value=Math.max(1,renderer.getPixelRatio());
+  return m.selectionStipple;
+}
+function syncSelectionStippleVisibility(){
+  for(const m of masses){
+    if(!m.selectionStipple&&!isSelectedMass(m))continue;
+    const overlay=ensureSelectionStipple(m);
+    if(overlay)overlay.visible=!!(
+      isSelectedMass(m)&&
+      viewMode==='workspace'&&
+      !thumbnail&&
+      !transparentExportActive
+    );
+  }
+}
 function geometryFromMassData(data,profile,cuts){
   const direct=Array.isArray(data.geometryPositions)&&data.geometryPositions.length>=9?data.geometryPositions:null,legacyBaked=Array.isArray(data.bakedPositions)&&data.bakedPositions.length>=9, baked=typeof data.baked==='boolean'?data.baked:legacyBaked;
   if(direct)return{geometry:geometryFromPositions(direct),baked};
@@ -4161,6 +4318,9 @@ function disposeMass(m){
   m.mesh?.material?.dispose?.();
   m.edges?.geometry?.dispose?.();
   m.edges?.material?.dispose?.();
+  // Selection stipple shares m.mesh.geometry; only its material is owned here.
+  m.selectionStipple?.material?.dispose?.();
+  m.selectionStipple=null;
 
   if(m.group)m.group.visible=false;
 }
@@ -4185,6 +4345,7 @@ function captureSceneView(){
     camera:{
       position:perspectiveCamera.position.toArray(),
       target:(projectionMode==='perspective'?cameraTarget:perspectiveTarget).toArray(),
+      fov:perspectiveCamera.fov,
       focalLength:perspectiveCamera.getFocalLength(),
       projectionMode,
       orthoTarget:cameraTarget.toArray(),
@@ -4279,7 +4440,7 @@ function applySavedScene(id){
   if(v.camera){
     if(Array.isArray(v.camera.position))perspectiveCamera.position.fromArray(v.camera.position);
     if(Array.isArray(v.camera.target))perspectiveTarget.fromArray(v.camera.target);
-    if(Number.isFinite(+v.camera.focalLength))perspectiveCamera.setFocalLength(+v.camera.focalLength);
+    restorePerspectiveLens(v.camera);
 
     const restoredProjection=(v.camera.projectionMode==='x'||v.camera.projectionMode==='y'||v.camera.projectionMode==='z'||v.camera.projectionMode==='iso')
       ?v.camera.projectionMode:'perspective';
@@ -4334,6 +4495,7 @@ function serializeProject(){
       camera:{
         position:perspectiveCamera.position.toArray(),
         target:(projectionMode==='perspective'?cameraTarget:perspectiveTarget).toArray(),
+        fov:perspectiveCamera.fov,
         focalLength:perspectiveCamera.getFocalLength(),
         projectionMode,
         orthoTarget:cameraTarget.toArray(),
@@ -5278,7 +5440,7 @@ function loadProjectObject(project,{fromAutosave=false}={}){
   if(s.camera){
     if(Array.isArray(s.camera.position))perspectiveCamera.position.fromArray(s.camera.position);
     if(Array.isArray(s.camera.target))perspectiveTarget.fromArray(s.camera.target);
-    if(Number.isFinite(+s.camera.focalLength))perspectiveCamera.setFocalLength(+s.camera.focalLength);
+    restorePerspectiveLens(s.camera);
 
     const restoredProjection=(s.camera.projectionMode==='x'||s.camera.projectionMode==='y'||s.camera.projectionMode==='z'||s.camera.projectionMode==='iso')
       ?s.camera.projectionMode:'perspective';
@@ -5342,6 +5504,7 @@ function loadProjectObject(project,{fromAutosave=false}={}){
     if(typeof s.settings.outlinesEnabled==='boolean')outlinesEnabled=s.settings.outlinesEnabled;
     const outlineBtn=document.getElementById('outlines');if(outlineBtn){outlineBtn.textContent='◇';outlineBtn.classList.toggle('activeState',outlinesEnabled);}
     updateAllMassVisuals();
+    syncLookJoystickUI?.();
   }
 
   if(s.workplane){
@@ -5529,22 +5692,25 @@ function isSelectedMass(m){return !!m&&selectedIds.has(m.id);}
 function groupMembers(m){return !m||m.groupId==null?[m].filter(Boolean):masses.filter(x=>x.groupId===m.groupId);}
 function selectionForMass(m){if(!m)return[];const current=selectedMasses();if(current.length>1&&isSelectedMass(m))return current;return groupMembers(m);}
 function updateMassVisual(m){
-  // Keep MA's dark outlines. Selection gets a stronger cool-neutral face shift
-  // so it is immediately readable without reintroducing the old green outline.
+  // v8.25 — SketchUp-style selection: faces keep their normal material and
+  // outlines stay canonical dark. Selection is shown only by muted royal blue-gray points.
   const sel=isSelectedMass(m);
   let base=0xffffff;
-  if(viewMode==='notan')base=sel?0x283139:0x000000;
-  else if(viewMode==='workspace')base=sel?0xe4ecf2:0xe8e8e8;
+  if(viewMode==='notan')base=0x000000;
+  else if(viewMode==='workspace')base=0xe8e8e8;
 
   m.mesh.material.color.set(base);
   if(m.mesh.material.emissive){
-    m.mesh.material.emissive.set(viewMode==='workspace'&&sel?0x10171b:0x000000);
-    m.mesh.material.emissiveIntensity=viewMode==='workspace'&&sel?0.32:1;
+    m.mesh.material.emissive.set(0x000000);
+    m.mesh.material.emissiveIntensity=1;
   }
 
   m.edges.visible=(viewMode==='shadow'||viewMode==='depth')?false:outlinesEnabled;
-  m.edges.material.color.set(sel?0x000000:outline);
+  m.edges.material.color.set(outline);
   m.edges.material.opacity=1;
+
+  const overlay=sel||m.selectionStipple?ensureSelectionStipple(m):null;
+  if(overlay)overlay.visible=!!(sel&&viewMode==='workspace'&&!thumbnail&&!transparentExportActive);
 }
 function updateAllMassVisuals(){masses.forEach(updateMassVisual);}
 function setSelection(list=[]){
@@ -5715,7 +5881,7 @@ function primaryDrawKindText(kind){
     kind==='circle'?'CIRCLE':
     kind==='polyline'?'POLY':'SHAPE';
 }
-function primaryBrushPickerUsesMainDock(){return !!(MA_IS_IPHONE||MA_IS_IPAD);}
+function primaryBrushPickerUsesMainDock(){return !!MA_UNIFIED_UI;}
 function iphonePrimaryDrawPaletteMap(sourceId=drawPaletteSourceId||'drawAddHoldBtn'){
   const anchor=IPHONE_DRAW_DOCK_IDS.includes(sourceId)?sourceId:'drawAddHoldBtn';
   // On iPhone/iPad the held ADD/ERASE circle keeps the current brush under the finger.
@@ -6127,7 +6293,7 @@ function syncPrimaryDockUI(){
       syncIPhoneBrushChoiceVisuals();
       return;
     }
-    // Desktop keeps the older follower palette. iPad/iPhone use the six main slots.
+    // All devices use the six main slots for the temporary brush picker.
     setPrimaryDockButtonVisual(b1,'ADD',{active:drawHoldAction==='add'});
     setPrimaryDockButtonVisual(b2,'ERASE',{active:drawHoldAction==='erase'});
     setPrimaryDockButtonVisual(b3,'',{size:true});
@@ -8927,16 +9093,25 @@ function cancelInteraction(restore=false){
 
 // --- Marquee selection ----------------------------------------------------------
 let marqueeState=null;
-function showMarquee(a,b){const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),w=Math.abs(a.x-b.x),h=Math.abs(a.y-b.y);ui.marquee.style.display='block';ui.marquee.style.left=x+'px';ui.marquee.style.top=y+'px';ui.marquee.style.width=w+'px';ui.marquee.style.height=h+'px';}
+function marqueeRect(a,b){
+  const x1=Number.isFinite(a?.x)?a.x:0,y1=Number.isFinite(a?.y)?a.y:0;
+  const x2=Number.isFinite(b?.x)?b.x:x1,y2=Number.isFinite(b?.y)?b.y:y1;
+  return{minX:Math.min(x1,x2),maxX:Math.max(x1,x2),minY:Math.min(y1,y2),maxY:Math.max(y1,y2)};
+}
+function showMarquee(a,b){
+  const r=marqueeRect(a,b);
+  ui.marquee.style.display='block';
+  ui.marquee.style.left=`${r.minX}px`;
+  ui.marquee.style.top=`${r.minY}px`;
+  ui.marquee.style.width=`${Math.max(0,r.maxX-r.minX)}px`;
+  ui.marquee.style.height=`${Math.max(0,r.maxY-r.minY)}px`;
+}
 function hideMarquee(){ui.marquee.style.display='none';marqueeState=null;}
 function projectedBounds(m){m.group.updateMatrixWorld(true);const box=new THREE.Box3().setFromObject(m.group);if(box.isEmpty())return null;const min=box.min,max=box.max,corners=[];for(const x of [min.x,max.x])for(const y of [min.y,max.y])for(const z of [min.z,max.z])corners.push(worldToClient(new THREE.Vector3(x,y,z)));return{minX:Math.min(...corners.map(p=>p.x)),maxX:Math.max(...corners.map(p=>p.x)),minY:Math.min(...corners.map(p=>p.y)),maxY:Math.max(...corners.map(p=>p.y))};}
 function marqueeSelection(a,b,{additive=false,toggle=false}={}){
-  const r={
-    minX:Math.min(a.x,b.x),
-    maxX:Math.max(a.x,b.x),
-    minY:Math.min(a.y,b.y),
-    maxY:Math.max(a.y,b.y)
-  };
+  // Always normalize both corners. Window Select therefore has identical
+  // geometry whether the gesture goes ↘, ↙, ↗ or ↖.
+  const r=marqueeRect(a,b);
 
   const picked=[];
   for(const m of masses){
@@ -8984,28 +9159,40 @@ function beginMarquee(e){
     additive,
     toggle
   };
-  renderer.domElement.setPointerCapture?.(e.pointerId);
+  // Pointer capture is important on iPhone where SELECT is held by one touch
+  // while another touch draws the window and can cross any side of its start.
+  try{renderer.domElement.setPointerCapture?.(e.pointerId);}catch(_){}
   showMarquee(marqueeState.start,marqueeState.current);
 }
 function updateMarquee(e){
-  if(!marqueeState)return;
-  marqueeState.current.set(e.clientX,e.clientY);
+  if(!marqueeState||e?.pointerId!==marqueeState.pointerId)return;
+  if(Number.isFinite(e.clientX)&&Number.isFinite(e.clientY)){
+    marqueeState.current.set(e.clientX,e.clientY);
+  }
   showMarquee(marqueeState.start,marqueeState.current);
 }
-function endMarquee(){
+function endMarquee(e=null,{commit=true}={}){
   if(!marqueeState)return;
   const st=marqueeState;
-  const dist=st.start.distanceTo(st.current);
 
-  if(dist<4){
-    // Keep the existing Select-mode tap behavior; only a real dragged window
-    // performs toggle selection.
-    if(!st.additive&&!st.toggle)setSelection([]);
-  }else{
-    marqueeSelection(st.start,st.current,{
-      additive:st.additive,
-      toggle:st.toggle
-    });
+  // iOS may omit the last pointermove before pointerup/pointercancel. Sample the
+  // terminal event so left/up drags cannot collapse to an older right/down point.
+  if(e&&(!Number.isFinite(e.pointerId)||e.pointerId===st.pointerId)&&Number.isFinite(e.clientX)&&Number.isFinite(e.clientY)){
+    st.current.set(e.clientX,e.clientY);
+  }
+
+  const dist=st.start.distanceTo(st.current);
+  if(commit){
+    if(dist<4){
+      // Keep the existing Select-mode tap behavior; only a real dragged window
+      // performs toggle selection.
+      if(!st.additive&&!st.toggle)setSelection([]);
+    }else{
+      marqueeSelection(st.start,st.current,{
+        additive:st.additive,
+        toggle:st.toggle
+      });
+    }
   }
   hideMarquee();
 }
@@ -9138,9 +9325,9 @@ const DOCK_POSITION_STORAGE_KEY='MA3D_DOCK_POSITION_V3';
 const maControlsDock=document.getElementById('maBottomDock');
 const dockDragHandle=document.getElementById('dockDragHandle');
 const MA_IS_IPHONE=!!window.__MA_IS_IPHONE__;
-const MA_MOBILE_DOCK_MENU=MA_IS_IPAD;
+const MA_MOBILE_DOCK_MENU=MA_IS_IPAD||!MA_DRAW_MOBILE;
 function mobileDockMenuEnabled(){
-  return !!MA_IS_IPAD;
+  return !!(MA_IS_IPAD||!MA_DRAW_MOBILE);
 }
 function iPhoneLandscapeDock(){
   if(!MA_IS_IPHONE)return false;
@@ -9551,7 +9738,7 @@ window.addEventListener('orientationchange',()=>{
   setTimeout(()=>{dockMetrics=null;readDockMetrics();applyDockPosition();},180);
 },{passive:true});
 
-if(dockDragHandle&&!MA_IS_IPHONE&&!MA_IS_IPAD){
+if(dockDragHandle&&!MA_MOBILE_DOCK_MENU&&!MA_IS_IPHONE&&!MA_IS_IPAD){
   dockDragHandle.addEventListener('pointerdown',e=>{
     e.preventDefault();
     e.stopPropagation();
@@ -9678,7 +9865,7 @@ if(mainMenuButton){
         pointerId:e.pointerId,startX:e.clientX,startY:e.clientY,lastX:e.clientX,lastY:e.clientY,
         dragging:false,timer:null
       };
-      press.timer=mobileDockMenuEnabled()?setTimeout(()=>{if(mobileMenuDockPress===press)beginMobileMenuDockDrag(press);},MOBILE_MENU_DOCK_HOLD_MS):null;
+      press.timer=(mobileDockMenuEnabled()&&e.pointerType==='touch')?setTimeout(()=>{if(mobileMenuDockPress===press)beginMobileMenuDockDrag(press);},MOBILE_MENU_DOCK_HOLD_MS):null;
       try{mainMenuButton.setPointerCapture?.(e.pointerId);}catch(_){}
     },{passive:false});
     mainMenuButton.addEventListener('pointermove',e=>{
@@ -9768,13 +9955,23 @@ function lookJoystickSelectionMode(){
 function syncLookJoystickUI(){
   const root=document.getElementById('lookJoystick');
   if(!root)return;
+
+  const selectionMode=lookJoystickSelectionMode();
+  const dockMode=primaryDockMode();
+  // Only show the outlines-OFF state while this physical circle is the real Mood
+  // joystick. Contextual reuse (Select, Safe Frame, Export, menus, brush picker)
+  // must keep its own visual state. SCENES intentionally keeps the real Mood
+  // joystick in slot six, so the indicator remains valid there too.
+  root.classList.toggle(
+    'outlinesOff',
+    !outlinesEnabled&&!selectionMode&&(dockMode==='base'||dockMode==='scenes')
+  );
   if(safeFrameDockOpen){syncSafeFrameDockVisuals();return;}
 
   const up=root.querySelector('.joyUp');
   const left=root.querySelector('.joyLeft');
   const right=root.querySelector('.joyRight');
   const down=root.querySelector('.joyDown');
-  const selectionMode=lookJoystickSelectionMode();
 
   if(selectionMode){
     // Select context, arranged spatially as requested:
@@ -9992,6 +10189,7 @@ function toggleOutlinesFromMoodJoystick(){
     outlineBtn.textContent='◇';
     outlineBtn.classList.toggle('activeState',outlinesEnabled);
   }
+  syncLookJoystickUI();
   scheduleAutosave();
   showToast(`OUTLINES ${outlinesEnabled?'ON':'OFF'}`);
 }
@@ -10074,6 +10272,48 @@ function setupJoystick(id,kind){
 }
 setupJoystick('viewJoystick','view');
 setupJoystick('lookJoystick','look');
+
+// v8.26 — desktop does not need joystick drags. Clicking a printed letter is
+// the exact directional action; center clicks keep their existing toggle action.
+function desktopActivateLookMode(mode){
+  if(!mode)return;
+  const sameSettingsMood=(mode===viewMode&&(mode==='shadow'||mode==='depth'));
+  if(sameSettingsMood){
+    lookSettingsPanelSuppressed=!lookSettingsPanelSuppressed;
+    syncUnifiedLookSettings();
+    showToast(`${mode==='shadow'?'LIGHT':'DEPTH'} CONTROLS ${lookSettingsPanelSuppressed?'OFF':'ON'}`);
+  }else{
+    applyViewMode(mode);
+    syncUnifiedLookSettings();
+    markSceneViewDirty();
+    scheduleAutosave();
+    showToast(mode==='notan'?'MASS':mode==='shadow'?'LIGHT':mode==='depth'?'DEPTH / FOG':'WORKSPACE');
+  }
+  updateMobileDrawUI();
+}
+function installDesktopJoystickLetterClicks(){
+  if(MA_DRAW_MOBILE)return;
+  document.querySelectorAll('#viewJoystick [data-joy-view]').forEach(label=>{
+    label.addEventListener('pointerdown',e=>{
+      if(e.pointerType!=='mouse'||e.button!==0||primaryDockMode()!=='base')return;
+      e.preventDefault();e.stopImmediatePropagation();
+      unifiedUIPointers.add(e.pointerId);
+      desktopAxisMoveArmed=null;
+      setProjectionMode(label.dataset.joyView,true,null,true);
+    },{capture:true,passive:false});
+  });
+  document.querySelectorAll('#lookJoystick [data-joy-mode]').forEach(label=>{
+    label.addEventListener('pointerdown',e=>{
+      if(e.pointerType!=='mouse'||e.button!==0)return;
+      const mode=primaryDockMode();
+      if(mode!=='base'&&mode!=='scenes')return;
+      e.preventDefault();e.stopImmediatePropagation();
+      unifiedUIPointers.add(e.pointerId);
+      desktopActivateLookMode(label.dataset.joyMode);
+    },{capture:true,passive:false});
+  });
+}
+installDesktopJoystickLetterClicks();
 
 const SAFE_FRAME_DOCK_CONTROLS=[
   ['viewJoystick','ratio','1:1'],
@@ -10223,6 +10463,10 @@ function installSceneSlotControl(id,slot){
     if(!sceneDockOpen)return;
     e.preventDefault();e.stopImmediatePropagation();
     unifiedUIPointers.add(e.pointerId);
+    if(!MA_DRAW_MOBILE&&e.pointerType==='mouse'&&e.button===2){
+      saveSceneToSlot(slot,{activate:false});
+      return;
+    }
     if(e.pointerType==='pen'){lastNativePenPointerAt=performance.now();registerIPadPencil();}
     try{el.setPointerCapture?.(e.pointerId);}catch(_){}
     sceneSlotGestures.set(e.pointerId,{slot,startX:e.clientX,startY:e.clientY,lastX:e.clientX,lastY:e.clientY});
@@ -10564,6 +10808,22 @@ function setupDrawHoldButton(id,erase=false){
     e.preventDefault();e.stopPropagation();
     unifiedUIPointers.add(e.pointerId);
 
+    // Desktop maps the iPad hold gesture to right-click: keep ADD/ERASE latched,
+    // but temporarily replace all six circles with the brush choices.
+    if(!MA_DRAW_MOBILE&&e.pointerType==='mouse'&&e.button===2){
+      if(interaction||marqueeState)cancelInteraction(true);
+      armDesktopDraw(erase);
+      drawPaletteSourceId=id;
+      drawModeHeld=true;
+      drawModeHoldPointerId=null;
+      drawModeHoldPointerType='mouse';
+      drawKindScrubChoice=null;
+      drawKindScrubTracking=false;
+      drawKindScrubHoverButtonId=null;
+      updateMobileDrawUI();
+      return;
+    }
+
     const dockMode=primaryDockMode();
 
     if(dockMode==='select'){
@@ -10700,11 +10960,48 @@ function setupDrawHoldButton(id,erase=false){
 setupDrawHoldButton('drawAddHoldBtn',false);
 setupDrawHoldButton('drawEraseHoldBtn',true);
 
+function chooseDesktopBrushFromDock(id,e){
+  if(MA_DRAW_MOBILE||!drawModeHeld||e.pointerType!=='mouse'||e.button!==0)return false;
+  const kind=primaryDrawKindForButton(id,drawPaletteSourceId);
+  if(!kind)return false;
+  e.preventDefault();e.stopImmediatePropagation();
+  unifiedUIPointers.add(e.pointerId);
+  const erase=drawHoldAction==='erase';
+
+  // Close only the temporary picker. The ADD/ERASE mode itself remains latched.
+  drawModeHeld=false;
+  drawModeHoldPointerId=null;
+  drawModeHoldPointerType=null;
+  drawKindScrubChoice=null;
+  drawKindScrubTracking=false;
+  drawKindScrubHoverButtonId=null;
+  setMobileDrawKind(kind);
+  armDesktopDraw(erase);
+  return true;
+}
+for(const id of IPHONE_DRAW_DOCK_IDS){
+  const el=document.getElementById(id);if(!el)continue;
+  el.addEventListener('pointerdown',e=>chooseDesktopBrushFromDock(id,e),{capture:true,passive:false});
+}
+
 const selectHoldBtn=document.getElementById('selectHoldBtn');
 if(selectHoldBtn){
   selectHoldBtn.addEventListener('pointerdown',e=>{
     e.preventDefault();e.stopPropagation();
     unifiedUIPointers.add(e.pointerId);
+
+    // Desktop hold-equivalent: right-click SELECT arms one Window Select drag.
+    if(!MA_DRAW_MOBILE&&e.pointerType==='mouse'&&e.button===2){
+      if(selectModeAvailable()){
+        activateSelectMode();
+        desktopWindowSelectArmed=true;
+        moveArmed=false;
+        selectTransformMode='select';
+        updateMobileDrawUI();
+        showToast('WINDOW SELECT · NEXT DRAG');
+      }
+      return;
+    }
 
     const selectDockMode=primaryDockMode();
     if(selectDockMode!=='draw'&&!selectModeAvailable()){
@@ -10770,10 +11067,15 @@ if(selectHoldBtn){
           showToast('HOLD SELECT · PICK');
         }
       }else if(selectModeActive){
-        // Mouse / pen UI keeps the existing one-pointer desktop behaviour.
-        if(ipadPencilMode)pencilSelectManuallyOff=true;
-        deactivateSelectMode(true);
-        showToast('SELECT OFF');
+        if(!MA_DRAW_MOBILE&&press.pointerType==='mouse'){
+          // Desktop tools are latched: clicking SELECT again keeps SELECT active.
+          activateSelectMode();
+          showToast(selectedMasses().length?'SELECT · MOVE':'SELECT');
+        }else{
+          if(ipadPencilMode)pencilSelectManuallyOff=true;
+          deactivateSelectMode(true);
+          showToast('SELECT OFF');
+        }
       }else{
         activateSelectMode();
         showToast(selectedMasses().length?'SELECT · MOVE':'SELECT');
@@ -11378,7 +11680,7 @@ function endModelPointer(e){
   const primaryButton=(e.pointerType==='pen'||e.pointerType==='touch')?0:e.button;
   if(primaryButton===1){orbiting=false;desktopOrbitPivot=null;desktopPanStartedAt=0;return;}
   if(primaryButton!==0)return;
-  if(marqueeState){endMarquee();return;}
+  if(marqueeState){endMarquee(e);return;}
   if(interaction?.kind==='draw'){
     // iPadOS does not guarantee a pointermove at the exact lift position.
     // Sample pointer-up once before commit so quick SHAPE strokes keep their
@@ -11553,7 +11855,7 @@ function secondaryPanelRangeForPoint(panel,x,y){
 function installSecondaryPanelDirectDrag(panel){
   if(!panel)return;
   let active=null;
-  const isDirectPointer=e=>e.pointerType==='touch'||e.pointerType==='pen';
+  const isDirectPointer=e=>e.pointerType==='touch'||e.pointerType==='pen'||(!MA_DRAW_MOBILE&&e.pointerType==='mouse'&&e.button===0);
 
   panel.addEventListener('pointerdown',e=>{
     if(!isDirectPointer(e)||active)return;
@@ -12354,7 +12656,7 @@ window.addEventListener('pointerup',e=>{
       if(currentAppMode()==='select'){
         if(marqueeState?.pointerId===e.pointerId){
           e.preventDefault();
-          endMarquee();
+          endMarquee(e);
           moveArmed=selectModeActive&&selectedMasses().length>0;
           selectTransformMode=moveArmed?'move':'select';
           updateMobileDrawUI();
@@ -12417,7 +12719,7 @@ window.addEventListener('pointerup',e=>{
 
       if(marqueeState?.pointerId===e.pointerId){
         e.preventDefault();
-        endMarquee();
+        endMarquee(e);
         desktopWindowSelectArmed=false;
         moveArmed=selectModeActive&&selectedMasses().length>0;
         selectTransformMode=moveArmed?'move':'select';
@@ -12508,7 +12810,7 @@ window.addEventListener('pointerup',e=>{
     if(e.pointerType==='mouse'&&e.button===0){
       if(marqueeState?.pointerId===e.pointerId){
         e.preventDefault();
-        endMarquee();
+        endMarquee(e);
         desktopWindowSelectArmed=false;
         moveArmed=selectModeActive&&selectedMasses().length>0;
         selectTransformMode=moveArmed?'move':'select';
@@ -12546,13 +12848,21 @@ window.addEventListener('pointerup',e=>{
       const armedSelect=false;
       endModelPointer(e);
 
-      if(armedDraw||armedSelect){
-        desktopShapeArmed=false;
+      if(armedDraw){
+        // Desktop ADD / ERASE are persistent tools. Finish this geometry only;
+        // keep the same draw action and brush ready for the next click/stroke.
+        desktopShapeArmed=true;
         desktopSelectArmed=false;
-        drawHoldAction='add';
+        mobileInputMode='draw';
+        mobileEraseHeld=drawHoldAction==='erase';
+        setTool(mobileDrawTool());
+        setSelectionGizmosEnabled(false);
+        finalizeRotatePivot(false);
+        updateMobileDrawUI();
+      }else if(armedSelect){
+        desktopSelectArmed=false;
         selectHoldAction='select';
         selectTransformMode='select';
-        mobileEraseHeld=false;
         mobileInputMode='navi';
         setTool('select');
         setSelectionGizmosEnabled(false);
@@ -12599,7 +12909,11 @@ window.addEventListener('pointercancel',e=>{
         return;
       }
       if(marqueeState?.pointerId===e.pointerId){
-        hideMarquee();
+        const dragged=marqueeState.start.distanceTo(marqueeState.current)>=4;
+        endMarquee(e,{commit:dragged});
+        moveArmed=selectModeActive&&selectedMasses().length>0;
+        selectTransformMode=moveArmed?'move':'select';
+        updateMobileDrawUI();
         return;
       }
       touchPointers.delete(e.pointerId);
@@ -12662,13 +12976,16 @@ window.addEventListener('pointercancel',e=>{
       orbiting=false;
       desktopOrbitPivot=null;
       if(interaction||marqueeState)cancelInteraction(true);
-      if(desktopShapeArmed||desktopSelectArmed){
-        desktopShapeArmed=false;
+      if(desktopShapeArmed){
         desktopSelectArmed=false;
-        drawHoldAction='add';
+        mobileInputMode='draw';
+        mobileEraseHeld=drawHoldAction==='erase';
+        setTool(mobileDrawTool());
+        updateMobileDrawUI();
+      }else if(desktopSelectArmed){
+        desktopSelectArmed=false;
         selectHoldAction='select';
         selectTransformMode='select';
-        mobileEraseHeld=false;
         mobileInputMode='navi';
         setTool('select');
         updateMobileDrawUI();
@@ -12725,10 +13042,10 @@ window.addEventListener('keydown',e=>{
     setPolylineAxisLock(e.key==='ArrowRight'?'x':e.key==='ArrowLeft'?'y':'z');return;
   }
   // Space has no default action. It remains available for user-assigned shortcuts.
-  // ESC always returns to the default Select / Move tool.
+  // ESC is the canonical desktop/mobile backtrack: neutral NAVI, no active tool,
+  // no selection and no contextual menu/panel. Camera/view settings are preserved.
   if(k==='escape'){
     e.preventDefault();
-    if(ui.shortcutPanel?.style.display==='flex')openShortcutPanel(false);
     if(brushSizing)finishBrushSizing(true);
     if(interaction){
       const before=interaction.before;
@@ -12737,11 +13054,49 @@ window.addEventListener('keydown',e=>{
     }else{
       clearPreview();clearSnapVisual();clearSpherePreview();showInference('');
     }
+
+    if(ui.shortcutPanel?.style.display==='flex')openShortcutPanel(false);
+    if(maMenuDockOpen)setMAMenuDockOpen(false);
+    if(exportDockOpen)setExportDockOpen(false);
+    if(sceneDockOpen)setSceneDockOpen(false);
+    if(safeFrameDockOpen)openSafeFramePanel(false);
+    lookSettingsPanelSuppressed=true;
+    const light=document.getElementById('sunDirPanel');
+    const depth=document.getElementById('depthRangePanel');
+    const workplanePanel=document.getElementById('viewWorkplanePanel');
+    if(light)light.style.display='none';
+    if(depth)depth.style.display='none';
+    if(workplanePanel)workplanePanel.style.display='none';
+
+    clearLatchedDrawForFunctionSwitch();
+    drawModeHeld=false;
+    desktopShapeArmed=false;
+    mobileEraseHeld=false;
+    selectModeActive=false;
+    selectModeHeld=false;
+    desktopSelectArmed=false;
+    desktopWindowSelectArmed=false;
+    moveArmed=false;
+    transformHoldMode=null;
+    desktopTransformArmed=false;
+    transformHoldReleasePending=false;
+    desktopAxisMoveArmed=null;
+    viewAxisHold=null;
+    viewJoystickGesture=null;
+    lookJoystickGesture=null;
     axisLock=null;
+    mobileInputMode='navi';
+    mobileSelectTap=null;
+    mobileMovePointerId=null;
+    setJoystickKnob('view',null);
+    setJoystickKnob('look',null);
+    setSelectionGizmosEnabled(false);
+    finalizeRotatePivot(false);
+    if(selectedMasses().length)setSelection([]);
     if(typeof transform!=='undefined'&&transform?.detach)transform.detach();
     if(typeof rotateTransform!=='undefined'&&rotateTransform?.detach)rotateTransform.detach();
-    if(typeof rotateTransform!=='undefined'&&rotateTransform?.detach)rotateTransform.detach();
     setTool('select');
+    updateMobileDrawUI();
     return;
   }
   if(e.key==='Enter'&&interaction?.kind==='polyline'){e.preventDefault();finishPolyline();return;}
@@ -12869,7 +13224,7 @@ document.addEventListener('visibilitychange',async()=>{
   standaloneResumeRefreshing=true;
   try{await saveAutosaveNow();}catch(_){ }
   const u=new URL(location.href);
-  u.searchParams.set('__ma_build',window.__MA_BUILD__||'8.18');
+  u.searchParams.set('__ma_build',window.__MA_BUILD__||'8.26');
   u.searchParams.set('__ma_resume',String(Date.now()));
   location.replace(u.href);
 });
