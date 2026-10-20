@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.30">
+<meta name="ma-build" content="8.38">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.30</title>
+<title>MA 3D · v8.38</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.30';
+  const CURRENT_BUILD = '8.38';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -2591,7 +2591,7 @@ scene.add(groundSurface);
 
 const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();
 const worldY=new THREE.Vector3(0,1,0);
-const accent=0x65e5a8,fill=0xb8b8b8,outline=0x242424,selectionRoyal=0x5e6b84;
+const accent=0x65e5a8,fill=0xb8b8b8,outline=0x242424,selectionRoyal=0xcfd6eb; // subtle royal-blue tint, still close to the normal grey surface but slightly bluer
 let masses=[],nextId=1,nextGroupId=1,selected=null,selectedIds=new Set(),activeTool='select',activeDepth=1.5,drawMode='add',outlinesEnabled=true,thumbnail=false,activeBrushContainerId=null,activeBrushContainerType=null;
 let brushWidthValue=1.5,brushDepthValue=1.5;
 let currentProjectName='untitled',autosaveTimer=null;
@@ -3334,7 +3334,6 @@ function renderDepthViewport(){
 }
 function isGraphicBW(){return viewMode==='shadow';}
 function renderViewport(){
-  syncSelectionStippleVisibility();
   syncUnlockedViewWorkplane();
   if(viewPlaneSectionGroup.visible)syncViewPlaneSectionPreview();
   if(viewMode==='depth'){
@@ -4224,72 +4223,7 @@ function outlineGeometryForMass(g,type){
   return edges;
 }
 function materialForMass(type='draw'){return new THREE.MeshLambertMaterial({color:fill,flatShading:!(type==='sphere'||type==='circle'||type==='curve'),side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});}
-// v8.25 — SketchUp-style selection stipple with near-pixel-size muted royal blue-gray points. This is a pure render overlay:
-// it shares the real mass geometry, never modifies it, and is excluded from raycasts.
-function makeSelectionStippleMaterial(){
-  return new THREE.ShaderMaterial({
-    uniforms:{
-      uColor:{value:new THREE.Color(selectionRoyal)},
-      uPixelRatio:{value:Math.max(1,renderer.getPixelRatio())}
-    },
-    vertexShader:`
-      void main(){
-        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
-      }
-    `,
-    fragmentShader:`
-      uniform vec3 uColor;
-      uniform float uPixelRatio;
-      void main(){
-        vec2 cssPx=gl_FragCoord.xy/max(1.0,uPixelRatio);
-        vec2 cell=mod(cssPx,vec2(6.0));
-        vec2 d=cell-vec2(3.0);
-        if(dot(d,d)>0.28)discard;
-        gl_FragColor=vec4(uColor,0.92);
-      }
-    `,
-    transparent:true,
-    depthTest:true,
-    depthWrite:false,
-    side:THREE.FrontSide,
-    polygonOffset:true,
-    polygonOffsetFactor:-1,
-    polygonOffsetUnits:-1
-  });
-}
-function ensureSelectionStipple(m){
-  if(!m)return null;
-  if(!m.selectionStipple){
-    const overlay=new THREE.Mesh(m.mesh.geometry,makeSelectionStippleMaterial());
-    overlay.renderOrder=3;
-    overlay.castShadow=false;
-    overlay.receiveShadow=false;
-    overlay.frustumCulled=true;
-    overlay.userData.ignoreModelRaycast=true;
-    overlay.visible=false;
-    m.group.add(overlay);
-    m.selectionStipple=overlay;
-  }else if(m.selectionStipple.geometry!==m.mesh.geometry){
-    // Geometry is source of truth: the overlay always follows the current mesh.
-    // Do not dispose here because this geometry is shared with m.mesh.
-    m.selectionStipple.geometry=m.mesh.geometry;
-  }
-  const mat=m.selectionStipple.material;
-  if(mat?.uniforms?.uPixelRatio)mat.uniforms.uPixelRatio.value=Math.max(1,renderer.getPixelRatio());
-  return m.selectionStipple;
-}
-function syncSelectionStippleVisibility(){
-  for(const m of masses){
-    if(!m.selectionStipple&&!isSelectedMass(m))continue;
-    const overlay=ensureSelectionStipple(m);
-    if(overlay)overlay.visible=!!(
-      isSelectedMass(m)&&
-      viewMode==='workspace'&&
-      !thumbnail&&
-      !transparentExportActive
-    );
-  }
-}
+// v8.31 — selection is a simple material tint; geometry remains the source of truth.
 function geometryFromMassData(data,profile,cuts){
   const direct=Array.isArray(data.geometryPositions)&&data.geometryPositions.length>=9?data.geometryPositions:null,legacyBaked=Array.isArray(data.bakedPositions)&&data.bakedPositions.length>=9, baked=typeof data.baked==='boolean'?data.baked:legacyBaked;
   if(direct)return{geometry:geometryFromPositions(direct),baked};
@@ -4318,10 +4252,6 @@ function disposeMass(m){
   m.mesh?.material?.dispose?.();
   m.edges?.geometry?.dispose?.();
   m.edges?.material?.dispose?.();
-  // Selection stipple shares m.mesh.geometry; only its material is owned here.
-  m.selectionStipple?.material?.dispose?.();
-  m.selectionStipple=null;
-
   if(m.group)m.group.visible=false;
 }
 function brushMassTypeForTool(tool){return tool==='boxbrush'?'boxbrush':'curve';}
@@ -5692,12 +5622,12 @@ function isSelectedMass(m){return !!m&&selectedIds.has(m.id);}
 function groupMembers(m){return !m||m.groupId==null?[m].filter(Boolean):masses.filter(x=>x.groupId===m.groupId);}
 function selectionForMass(m){if(!m)return[];const current=selectedMasses();if(current.length>1&&isSelectedMass(m))return current;return groupMembers(m);}
 function updateMassVisual(m){
-  // v8.25 — SketchUp-style selection: faces keep their normal material and
-  // outlines stay canonical dark. Selection is shown only by muted royal blue-gray points.
+  // v8.32 — selected geometry keeps the normal material/shading and only receives a
+  // subtle royal-blue cast over the normal grey, slightly bluer than before. Outlines remain canonical dark geometry edges.
   const sel=isSelectedMass(m);
   let base=0xffffff;
   if(viewMode==='notan')base=0x000000;
-  else if(viewMode==='workspace')base=0xe8e8e8;
+  else if(viewMode==='workspace')base=sel?selectionRoyal:0xe8e8e8;
 
   m.mesh.material.color.set(base);
   if(m.mesh.material.emissive){
@@ -5708,9 +5638,6 @@ function updateMassVisual(m){
   m.edges.visible=(viewMode==='shadow'||viewMode==='depth')?false:outlinesEnabled;
   m.edges.material.color.set(outline);
   m.edges.material.opacity=1;
-
-  const overlay=sel||m.selectionStipple?ensureSelectionStipple(m):null;
-  if(overlay)overlay.visible=!!(sel&&viewMode==='workspace'&&!thumbnail&&!transparentExportActive);
 }
 function updateAllMassVisuals(){masses.forEach(updateMassVisual);}
 function setSelection(list=[]){
@@ -9044,8 +8971,11 @@ function setTool(t){
   // Only the current editing tool gets the strong highlight. State/view controls
   // use their own subtle indicators and never compete visually with the active tool.
 
+  // v8.36 — desktop idle Workspace/NAVI uses the normal arrow cursor.
+  // Drawing remains crosshair; selection remains the standard arrow. Orbit/pan
+  // behavior is unchanged and still lives on Middle Mouse / Shift+Middle Mouse.
   renderer.domElement.style.cursor=MA_UNIFIED_UI
-    ?(currentAppMode()==='draw'?'crosshair':currentAppMode()==='select'?'default':moveArmed?'move':'grab')
+    ?(currentAppMode()==='draw'?'crosshair':currentAppMode()==='select'?'default':moveArmed?'move':'default')
     :(isDrawTool(t)?'crosshair':(t==='select'||t==='move'||t==='modify')?'move':'default');
   syncRotateGizmo();
   const meta=TOOL_UI[t];
@@ -9163,6 +9093,16 @@ function beginMarquee(e){
   // while another touch draws the window and can cross any side of its start.
   try{renderer.domElement.setPointerCapture?.(e.pointerId);}catch(_){}
   showMarquee(marqueeState.start,marqueeState.current);
+}
+// v8.38 — desktop Window Select uses the same toggle-selection principle as
+// direct clicking: masses/groups inside the rectangle flip selection state.
+// Selected items become deselected, unselected items become selected, while
+// selection outside the rectangle stays unchanged.
+function beginDesktopMarquee(e){
+  beginMarquee(e);
+  if(!marqueeState)return;
+  marqueeState.toggle=true;
+  marqueeState.additive=false;
 }
 function updateMarquee(e){
   if(!marqueeState||e?.pointerId!==marqueeState.pointerId)return;
@@ -12338,30 +12278,39 @@ renderer.domElement.addEventListener('pointerdown',e=>{
         if(beginAxisLockedMoveAnywhere(e,axis))return;
       }
 
-      if(currentAppMode()==='navi'){
-        if(moveArmed){
-          const moveHit=raycastMoveTarget(e.clientX,e.clientY);
-          const moveMass=massFromHit(moveHit);
-          if(moveMass&&isSelectedMass(moveMass)){
-            if(activeTool!=='select')setTool('select');
-            beginMove(e);
-            return;
-          }
-        }
-
-        unifiedNaviPointerId=e.pointerId;
-        orbiting=true;
-        desktopOrbitPivot=orbitPivotAtScreen(e.clientX,e.clientY);
-        desktopPanStartedAt=0;
-        lastX=e.clientX;lastY=e.clientY;
-        renderer.domElement.setPointerCapture?.(e.pointerId);
-        return;
-      }
-
+      // ADD / ERASE explicitly owns left mouse while it is active. Everywhere
+      // else on desktop, left mouse is Select / Window Select — never camera orbit.
       if(currentAppMode()==='draw'){
         if(activeTool!==mobileDrawTool())setTool(mobileDrawTool());
         if(!(activeTool==='polyline'&&interaction?.kind==='polyline'))prepareMobileStrokePlane(e.clientX,e.clientY);
         beginModelPointer(e);
+        return;
+      }
+
+      if(currentAppMode()==='navi'){
+        // A normal viewport click enters Select automatically on desktop.
+        if(selectModeAvailable())activateSelectMode();
+        if(activeTool!=='select')setTool('select');
+
+        const hit=raycastMasses(e.clientX,e.clientY);
+        const m=massFromHit(hit);
+        if(m){
+          mobileSelectTap={
+            pointerId:e.pointerId,
+            massId:m.id,
+            startX:e.clientX,
+            startY:e.clientY,
+            startTime:performance.now(),
+            moved:false,
+            wasSelected:isSelectedMass(m),
+            additive:!!e.shiftKey,
+            pointerType:'mouse'
+          };
+          renderer.domElement.setPointerCapture?.(e.pointerId);
+          return;
+        }
+
+        beginDesktopMarquee(e);
         return;
       }
 
@@ -12370,19 +12319,13 @@ renderer.domElement.addEventListener('pointerdown',e=>{
 
         if(desktopWindowSelectArmed){
           desktopWindowSelectArmed=false;
-          beginMarquee(e);
+          beginDesktopMarquee(e);
           return;
         }
 
-        if(transformHoldMode){
-          unifiedNaviPointerId=e.pointerId;
-          orbiting=true;
-          desktopOrbitPivot=orbitPivotAtScreen(e.clientX,e.clientY);
-          desktopPanStartedAt=0;
-          lastX=e.clientX;lastY=e.clientY;
-          renderer.domElement.setPointerCapture?.(e.pointerId);
-          return;
-        }
+        // Scale/Rotate gizmos get the same left-mouse event through
+        // TransformControls. Clicking elsewhere must not fall back to orbit.
+        if(transformHoldMode)return;
 
         const hit=moveArmed?raycastMoveTarget(e.clientX,e.clientY):raycastMasses(e.clientX,e.clientY);
         const m=massFromHit(hit);
@@ -12395,18 +12338,14 @@ renderer.domElement.addEventListener('pointerdown',e=>{
             startTime:performance.now(),
             moved:false,
             wasSelected:isSelectedMass(m),
+            additive:!!e.shiftKey,
             pointerType:'mouse'
           };
           renderer.domElement.setPointerCapture?.(e.pointerId);
           return;
         }
 
-        unifiedNaviPointerId=e.pointerId;
-        orbiting=true;
-        desktopOrbitPivot=orbitPivotAtScreen(e.clientX,e.clientY);
-        desktopPanStartedAt=0;
-        lastX=e.clientX;lastY=e.clientY;
-        renderer.domElement.setPointerCapture?.(e.pointerId);
+        beginDesktopMarquee(e);
         return;
       }
     }
@@ -12824,7 +12763,9 @@ window.addEventListener('pointerup',e=>{
         mobileSelectTap=null;
         if(!candidate.moved&&performance.now()-candidate.startTime<500){
           const m=massById(candidate.massId);
-          if(m)selectInteractive(m,true);
+          // Desktop repeat-click matches touch/Pencil: clicking an already
+          // selected mass toggles that mass/group out of the selection.
+          if(m)selectInteractive(m,!!candidate.additive||!!candidate.wasSelected);
         }
         return;
       }
