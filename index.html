@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.39">
+<meta name="ma-build" content="8.47">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.39</title>
+<title>MA 3D · v8.47</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.39';
+  const CURRENT_BUILD = '8.47';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -1988,6 +1988,30 @@ html:not(.ma-draw-mobile) #lookJoystick.iphoneBrushChoiceMode .joyKnob{
   pointer-events:none !important;
 }
 </style>
+
+
+/* v8.47 — iPad Pencil Select is a mode toggle, not a black active tool.
+   Single Select uses the same neutral surface as the other inactive circles.
+   Multi Select is the only state that gets a grey fill. */
+<style id="ma-v847-pencil-multiselect">
+html.ma-ipad.ma-pencil-mode #selectHoldBtn:not(.pencilMultiSelect),
+html.ma-ipad.ma-pencil-mode #selectHoldBtn:not(.pencilMultiSelect).active,
+html.ma-ipad.ma-pencil-mode #selectHoldBtn:not(.pencilMultiSelect).primaryContextActive,
+html.ma-ipad.ma-pencil-mode #selectHoldBtn:not(.pencilMultiSelect).primaryChoice{
+  background:var(--control) !important;
+  color:var(--ink) !important;
+  border-color:var(--line) !important;
+}
+html.ma-ipad.ma-pencil-mode #selectHoldBtn.pencilMultiSelect,
+html.ma-ipad.ma-pencil-mode #selectHoldBtn.pencilMultiSelect.active,
+html.ma-ipad.ma-pencil-mode #selectHoldBtn.pencilMultiSelect.primaryContextActive,
+html.ma-ipad.ma-pencil-mode #selectHoldBtn.pencilMultiSelect.primaryChoice{
+  background:#d9d9d4 !important;
+  color:var(--ink) !important;
+  border-color:rgba(70,70,68,.34) !important;
+}
+</style>
+
 </head>
 <body>
 <div id="app">
@@ -2591,7 +2615,7 @@ scene.add(groundSurface);
 
 const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();
 const worldY=new THREE.Vector3(0,1,0);
-const accent=0x65e5a8,fill=0xb8b8b8,outline=0x242424,selectionRoyal=0xcfd6eb; // subtle royal-blue tint, still close to the normal grey surface but slightly bluer
+const accent=0x65e5a8,fill=0xb8b8b8,outline=0x242424,selectionRoyal=0x5a72c7; // selected surface: toned-down Royal Blue; geometry/outlines stay unchanged
 let masses=[],nextId=1,nextGroupId=1,selected=null,selectedIds=new Set(),activeTool='select',activeDepth=1.5,drawMode='add',outlinesEnabled=true,thumbnail=false,activeBrushContainerId=null,activeBrushContainerType=null;
 let brushWidthValue=1.5,brushDepthValue=1.5;
 let currentProjectName='untitled',autosaveTimer=null;
@@ -2628,6 +2652,7 @@ let drawModeHeld=false,drawModeHoldPointerId=null,drawModeHoldPointerType=null;
 let drawKindScrubChoice=null,drawPaletteSourceId='drawAddHoldBtn';
 let drawKindScrubTracking=false,drawKindScrubHoverButtonId=null;
 let drawHoldCancelTimer=null,drawHoldPointerCancelledForPen=false;
+let selectHoldCancelTimer=null,selectHoldPointerCancelledForPen=false;
 let transformHoldCancelTimer=null,transformHoldPointerCancelledForPen=false;
 let selectModeHeld=false,selectModeHoldPointerId=null,selectModeHoldPointerType=null,desktopSelectArmed=false;
 let selectModeActive=false,selectButtonPress=null,desktopWindowSelectArmed=false;
@@ -2650,6 +2675,9 @@ let ipadPencilMode=MA_IS_IPAD;
 let ipadPencilAvailable=MA_IS_IPAD;
 let ipadInputModePreference=MA_IS_IPAD?'pencil':'auto'; // auto | pencil | finger
 let pencilSelectManuallyOff=false;
+// v8.46 — Pencil selection is always available in Pencil mode. SELECT is no
+// longer a hold gesture there; a tap toggles persistent Single / Multi Select.
+let ipadPencilMultiSelect=false;
 let pencilDrawButtonPress=null;
 const PENCIL_DRAW_MENU_HOLD_MS=60;
 const PENCIL_DRAW_TOGGLE_HOLD_MS=220;
@@ -3575,6 +3603,71 @@ function worldUnitsPerPixel(p){
   }
   const d=camera.position.distanceTo(p);
   return 2*d*Math.tan(THREE.MathUtils.degToRad(camera.fov*.5))/Math.max(1,renderer.domElement.clientHeight);
+}
+
+// v8.40 — SHAPE smoothing must not change when the artist changes camera FOV.
+// The original SHAPE feel was tuned at 35°. Reconstruct that same world-space
+// tolerance at the current drawing depth while leaving the actual camera/FOV alone.
+// Orthographic views have no perspective FOV, so their existing pixel scale is used.
+const SHAPE_REFERENCE_FOV_DEG=35;
+function shapeWorldUnitsPerPixel(p){
+  if(camera.isOrthographicCamera)return worldUnitsPerPixel(p);
+  const d=Math.max(.000001,camera.position.distanceTo(p));
+  const h=Math.max(1,renderer.domElement.clientHeight);
+  return 2*d*Math.tan(THREE.MathUtils.degToRad(SHAPE_REFERENCE_FOV_DEG*.5))/h;
+}
+// v8.42 — freehand SHAPE stays an OPEN ordered path while the pointer is down.
+// Never run open Pencil samples through cleanProfile(): that helper is for closed
+// polygons and may reverse winding when signed area changes during a crossover.
+// Reversing the live path was the source of preview jumps/disappearing segments.
+function cleanOpenShapePath(input,eps=1e-5){
+  const out=[];
+  for(const p of input||[]){
+    const q=p?.clone?p.clone():new THREE.Vector2(p.x,p.y);
+    if(!out.length||out[out.length-1].distanceToSquared(q)>eps*eps)out.push(q);
+  }
+  return out;
+}
+function resampleOpenShapeProfile(points,spacing,maxPoints=150){
+  const src=cleanOpenShapePath((points||[]).map(p=>p.clone()),Math.max(1e-7,spacing*.18));
+  if(src.length<2)return src;
+  const cumulative=[0];
+  let total=0;
+  for(let i=1;i<src.length;i++){
+    total+=src[i].distanceTo(src[i-1]);
+    cumulative.push(total);
+  }
+  if(total<1e-8)return[src[0].clone()];
+  const count=Math.min(maxPoints,Math.max(2,Math.ceil(total/Math.max(spacing,1e-7))+1));
+  const out=[];
+  let seg=1;
+  for(let i=0;i<count;i++){
+    const d=total*(i/(count-1));
+    while(seg<cumulative.length-1&&cumulative[seg]<d)seg++;
+    const a=src[seg-1],b=src[seg];
+    const d0=cumulative[seg-1],d1=cumulative[seg];
+    const t=d1>d0?(d-d0)/(d1-d0):0;
+    out.push(a.clone().lerp(b,clamp(t,0,1)));
+  }
+  return out;
+}
+function smoothOpenShapeProfile(points,passes=2,strength=.42){
+  let pts=(points||[]).map(p=>p.clone());
+  if(pts.length<3)return pts;
+  const s=clamp(strength,0,.8);
+  for(let pass=0;pass<passes;pass++){
+    const next=[pts[0].clone()];
+    for(let i=1;i<pts.length-1;i++){
+      const avg=pts[i-1].clone().add(pts[i+1]).multiplyScalar(.5);
+      next.push(pts[i].clone().lerp(avg,s));
+    }
+    next.push(pts[pts.length-1].clone());
+    pts=next;
+  }
+  return pts;
+}
+function validShapeProfile(profile){
+  return !!(profile&&profile.length>=3&&Math.abs(signedArea(profile))>=.0005&&simplePolygon(profile));
 }
 function basisQuaternion(u,v,n){return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(u,v,n));}
 function showToast(t){}
@@ -5622,8 +5715,8 @@ function isSelectedMass(m){return !!m&&selectedIds.has(m.id);}
 function groupMembers(m){return !m||m.groupId==null?[m].filter(Boolean):masses.filter(x=>x.groupId===m.groupId);}
 function selectionForMass(m){if(!m)return[];const current=selectedMasses();if(current.length>1&&isSelectedMass(m))return current;return groupMembers(m);}
 function updateMassVisual(m){
-  // v8.32 — selected geometry keeps the normal material/shading and only receives a
-  // subtle royal-blue cast over the normal grey, slightly bluer than before. Outlines remain canonical dark geometry edges.
+  // v8.32 — selected geometry keeps the normal material/shading and uses a
+  // much lighter neutral grey surface. Outlines remain canonical dark geometry edges. Outlines remain canonical dark geometry edges.
   const sel=isSelectedMass(m);
   let base=0xffffff;
   if(viewMode==='notan')base=0x000000;
@@ -6233,7 +6326,9 @@ function syncPrimaryDockUI(){
     setPrimaryDockButtonVisual(b1,'SCALE',{active:transformHoldMode==='scale'});
     setPrimaryDockButtonVisual(b2,'ROTATE',{active:transformHoldMode==='rotate'});
     setPrimaryDockButtonVisual(b3,'DUP');
-    setPrimaryDockButtonVisual(b4,'SELECT',{active:true});
+    // In iPad Pencil mode SELECT is a Single/Multi mode toggle, not an active
+    // modelling tool. Multi is shown by the dedicated grey state below.
+    setPrimaryDockButtonVisual(b4,'SELECT',{active:!(MA_IS_IPAD&&ipadPencilMode)});
     return;
   }
 
@@ -6294,7 +6389,14 @@ function updateMobileDrawUI(){
   eraseBtn?.classList.toggle('eraseActive',dockMode==='base'&&mode==='draw'&&drawHoldAction==='erase');
   selectBtn?.classList.toggle(
     'active',
-    canSelect&&dockMode==='base'&&(selectModeActive||selectModeHeld||desktopSelectArmed||desktopWindowSelectArmed)
+    canSelect&&
+    dockMode==='base'&&
+    !(MA_IS_IPAD&&ipadPencilMode)&&
+    (selectModeActive||selectModeHeld||desktopSelectArmed||desktopWindowSelectArmed)
+  );
+  selectBtn?.classList.toggle(
+    'pencilMultiSelect',
+    !!(MA_IS_IPAD&&ipadPencilMode&&ipadPencilMultiSelect&&canSelect&&(dockMode==='base'||dockMode==='select'))
   );
 
   syncPrimaryDockUI();
@@ -6373,6 +6475,36 @@ function deferDrawHoldCancelForPen(e){
       endDrawModeHold();
     }
   },350);
+  return true;
+}
+function clearSelectHoldCancelTimer(){
+  if(selectHoldCancelTimer){
+    clearTimeout(selectHoldCancelTimer);
+    selectHoldCancelTimer=null;
+  }
+}
+function scheduleSelectHoldCancelAfterPencil(delay=1400){
+  if(!selectHoldPointerCancelledForPen||!selectModeHeld)return;
+  clearSelectHoldCancelTimer();
+  selectHoldCancelTimer=setTimeout(()=>{
+    selectHoldCancelTimer=null;
+    if(!selectHoldPointerCancelledForPen||!selectModeHeld)return;
+    if(penActive){
+      scheduleSelectHoldCancelAfterPencil(500);
+      return;
+    }
+    selectHoldPointerCancelledForPen=false;
+    endSelectModeHold();
+  },delay);
+}
+function deferSelectHoldCancelForPen(){
+  if(!MA_IS_IPAD||!ipadPencilMode||!selectModeHeld)return false;
+  // WebKit may cancel the finger PointerEvent as soon as Pencil contacts the
+  // canvas. Preserve the held SELECT state so Pencil remains the modelling
+  // pointer; fingers themselves continue to be navigation-only.
+  selectHoldPointerCancelledForPen=true;
+  clearSelectHoldCancelTimer();
+  scheduleSelectHoldCancelAfterPencil(1400);
   return true;
 }
 function beginDrawModeHold(e,erase=false){
@@ -6468,6 +6600,7 @@ function endDrawModeHold(e=null){
 function deactivateSelectMode(clearSelection=true){
   if(!MA_UNIFIED_UI)return;
 
+  if(MA_IS_IPAD&&ipadPencilMode)ipadPencilMultiSelect=false;
   selectModeActive=false;
   selectModeHeld=false;
   desktopSelectArmed=false;
@@ -6537,6 +6670,8 @@ function beginSelectModeHold(e){
   if(!MA_UNIFIED_UI||selectModeHeld||drawModeHeld||!selectModeAvailable())return;
   e?.preventDefault?.();
   e?.stopPropagation?.();
+  clearSelectHoldCancelTimer();
+  selectHoldPointerCancelledForPen=false;
 
   if(interaction||marqueeState)cancelInteraction(true);
   clearMobileStraightHold();
@@ -6579,6 +6714,8 @@ function beginSelectModeHold(e){
 function endSelectModeHold(e=null){
   if(!MA_UNIFIED_UI||!selectModeHeld)return;
   if(e&&selectModeHoldPointerId!=null&&e.pointerId!==selectModeHoldPointerId)return;
+  clearSelectHoldCancelTimer();
+  selectHoldPointerCancelledForPen=false;
 
   if(marqueeState){
     try{endMarquee();}catch(_){hideMarquee();}
@@ -6807,30 +6944,39 @@ function spatialStrokePoints(st,points,samples){
   return points.map((p,i)=>strokeLocalPoint(st,p,samples?.[i]||samples?.[samples.length-1]||null));
 }
 
-function shapeFillProfile(st,points=st?.points||[]){
-  if(!st||!points?.length)return[];
-  if(st.rectFillMode||st.circleProfileMode||st.polylineProfileMode)return cleanProfile(points.map(p=>p.clone()),.0005);
-  return buildShapeAssistProfile(st,points);
+function shapeFillProfile(st,points=null){
+  if(!st)return[];
+  const supplied=points&&points.length?points:null;
+  const source=(st.shapeFillMode&&st.rawPoints?.length)
+    ?st.rawPoints
+    :(supplied||st.points||[]);
+  if(!source?.length)return[];
+  if(st.rectFillMode||st.circleProfileMode||st.polylineProfileMode){
+    const profileSource=supplied||st.points||source;
+    return cleanProfile(profileSource.map(p=>p.clone()),.0005);
+  }
+  return buildShapeAssistProfile(st,source);
 }
 function repairShapeProfileForCommit(st,profile,sourcePoints){
   let p=cleanProfile(profile||[],.001);
-  if(p.length>=3&&Math.abs(signedArea(p))>=.0005&&simplePolygon(p))return p;
+  if(validShapeProfile(p))return p;
 
-  // Fast Pencil strokes can contain one tiny loop/crossing caused by sampling
-  // jitter. Progressively simplify the RAW path just enough to recover one
-  // simple polygon instead of throwing the complete stroke away.
-  const raw=cleanProfile((sourcePoints||[]).map(q=>q.clone()),.0008);
-  if(raw.length<3)return p;
+  // Repair only the already-smoothed silhouette. Falling back to the raw Pencil
+  // path was the source of release-time teeth: a different polygon could be
+  // generated after the preview disappeared. Prefer the last visible stable
+  // profile, then progressively soften/simplify that same silhouette.
+  const stable=cleanProfile((st?.lastStableShapeProfile||p||[]).map(q=>q.clone()),.001);
+  if(validShapeProfile(stable))return stable;
+  if(p.length<3)return p;
 
   const ref=(st?.plane||workplane).origin;
-  const px=Math.max(.0015,worldUnitsPerPixel(ref));
-  for(const factor of [1.4,2.2,3.2,4.8,7]){
-    const candidate=cleanProfile(rdp(raw,px*factor),.001);
-    if(
-      candidate.length>=3 &&
-      Math.abs(signedArea(candidate))>=.0005 &&
-      simplePolygon(candidate)
-    )return candidate;
+  const px=Math.max(.0015,shapeWorldUnitsPerPixel(ref));
+  for(const factor of [1.2,1.8,2.6,3.8]){
+    let candidate=cleanProfile(rdp(p,px*factor),.001);
+    candidate=resampleOpenShapeProfile(candidate,px*3.0,120);
+    candidate=smoothOpenShapeProfile(candidate,2,.38);
+    candidate=cleanProfile(candidate,.001);
+    if(validShapeProfile(candidate))return candidate;
   }
   return p;
 }
@@ -6860,17 +7006,30 @@ function snapAssistedShapeSegments(profile,level=1){
 function buildShapeAssistProfile(st,points){
   const raw=(points||st?.rawPoints||st?.points||[]).map(p=>p.clone());
   if(!raw.length)return[];
-  if(raw.length<3)return cleanProfile(raw,.002);
+  if(raw.length<3)return cleanOpenShapePath(raw,.002);
 
   const plane=st?.plane||workplane;
   const ref=plane.origin.clone();
-  const base=Math.max(.0025,worldUnitsPerPixel(ref)*1.35);
+  const px=Math.max(.0015,shapeWorldUnitsPerPixel(ref));
   const level=Math.max(0,st?.shapeAssistLevel||0);
 
-  let profile=cleanProfile(raw,base*.9);
-  profile=rdp(profile,base*(1+level*1.9));
-  if(level>0)profile=snapAssistedShapeSegments(profile,level);
-  profile=cleanProfile(profile,base*.9);
+  // Keep freehand sensitivity in screen-space. Uniform resampling removes
+  // browser/Pencil event-density differences; a restrained Laplacian filter
+  // removes hand jitter without turning the silhouette into a generic blob.
+  let profile=cleanOpenShapePath(raw,px*.7);
+  profile=resampleOpenShapeProfile(profile,px*(2.8+level*.35),150);
+  profile=smoothOpenShapeProfile(profile,2+Math.min(2,level),.40+Math.min(.12,level*.035));
+
+  // The hold-to-assist feature still straightens near-axis sections, but normal
+  // SHAPE no longer runs RDP as its primary preview. Long RDP segments were the
+  // visible faceting/jaggedness in the freehand silhouette.
+  if(level>0){
+    profile=rdp(profile,px*(.75+level*.75));
+    profile=snapAssistedShapeSegments(profile,level);
+    profile=resampleOpenShapeProfile(profile,px*3.0,140);
+    profile=smoothOpenShapeProfile(profile,1,.28);
+  }
+  profile=cleanOpenShapePath(profile,px*.5);
 
   return profile.length?profile:raw;
 }
@@ -6888,12 +7047,29 @@ function updateShapeFillPreview(st){
   clearPreview();
   if(!st?.points?.length)return;
 
-  const baseProfile=shapeFillProfile(st);
+  // SHAPE has two preview responsibilities:
+  // 1) the LIVE boundary must always follow the ordered Pencil path, even while
+  //    that path temporarily self-crosses;
+  // 2) the translucent fill must only use a valid simple polygon. During a
+  //    crossover it may hold the last valid fill, but it must never hide or
+  //    replace the current live outline.
+  const liveProfile=shapeFillProfile(st);
+  let fillProfile=liveProfile;
+  const freeShape=st.shapeFillMode&&!st.rectFillMode&&!st.circleProfileMode&&!st.polylineProfileMode;
+  if(freeShape){
+    st.previewShapeProfile=liveProfile.map(p=>p.clone());
+    if(validShapeProfile(liveProfile)){
+      st.lastStableShapeProfile=liveProfile.map(p=>p.clone());
+    }else{
+      fillProfile=st.lastStableShapeProfile?.length>=3
+        ?st.lastStableShapeProfile.map(p=>p.clone())
+        :null;
+    }
+  }
+
   const plane=st.plane||workplane;
   const q=basisQuaternion(plane.u,plane.v,plane.n);
   const worldM=new THREE.Matrix4().compose(plane.origin.clone(),q,new THREE.Vector3(1,1,1));
-
-  const profiles=[baseProfile];
 
   previewLine=new THREE.Group();
   previewLine.renderOrder=2300;
@@ -6903,25 +7079,24 @@ function updateShapeFillPreview(st){
   previewFill.renderOrder=2200;
   scene.add(previewFill);
 
-  for(const profile of profiles){
-    if(profile.length>=2){
-      const outlinePts=profile.map(p=>new THREE.Vector3(p.x,p.y,0).applyMatrix4(worldM));
-      if(profile.length>=3)outlinePts.push(outlinePts[0].clone());
-      const og=new THREE.BufferGeometry().setFromPoints(outlinePts);
-      const line=new THREE.Line(
-        og,
-        new THREE.LineBasicMaterial({color:outline,transparent:true,opacity:1,depthTest:false})
-      );
-      line.renderOrder=2300;
-      previewLine.add(line);
-    }
+  // Always draw the current ordered boundary. Self-intersection is harmless for
+  // a line preview and gives the artist continuous feedback through a crossover.
+  if(liveProfile?.length>=2){
+    const outlinePts=liveProfile.map(p=>new THREE.Vector3(p.x,p.y,0).applyMatrix4(worldM));
+    if(liveProfile.length>=3)outlinePts.push(outlinePts[0].clone());
+    const og=new THREE.BufferGeometry().setFromPoints(outlinePts);
+    const line=new THREE.Line(
+      og,
+      new THREE.LineBasicMaterial({color:outline,transparent:true,opacity:1,depthTest:false})
+    );
+    line.renderOrder=2300;
+    previewLine.add(line);
+  }
 
-    if(profile.length<3||Math.abs(signedArea(profile))<.001||!simplePolygon(profile))continue;
-
-    const shape=new THREE.Shape(profile.map(p=>new THREE.Vector2(p.x,p.y)));
+  if(fillProfile&&validShapeProfile(fillProfile)){
+    const shape=new THREE.Shape(fillProfile.map(p=>new THREE.Vector2(p.x,p.y)));
     const g=new THREE.ShapeGeometry(shape);
     g.applyMatrix4(worldM);
-
     const fill=new THREE.Mesh(
       g,
       new THREE.MeshBasicMaterial({
@@ -7000,13 +7175,15 @@ function eraseWithFillCutterWorld(cutterWorld,targetId=null){
 }
 
 function commitShapeFill(st,points){
-  // SHAPE already keeps an authoritative raw Pencil path. Build the final
-  // assisted profile from that raw path exactly once; repeatedly simplifying
-  // the preview profile could occasionally collapse a perfectly valid stroke.
+  // SHAPE commits the same filtered silhouette that was last shown in preview.
+  // Raw Pencil samples remain authoritative input, but release never re-runs a
+  // different simplification path that can create fresh teeth/corners.
   const sourcePoints=st?.shapeFillMode&&st.rawPoints?.length
     ?st.rawPoints
     :points;
-  let profile=shapeFillProfile(st,sourcePoints);
+  let profile=(st?.shapeFillMode&&st.previewShapeProfile?.length)
+    ?st.previewShapeProfile.map(p=>p.clone())
+    :shapeFillProfile(st,sourcePoints);
   profile=repairShapeProfileForCommit(st,profile,sourcePoints);
   clearPreview();clearDrawEndpoint();clearDrawGuide();
   interaction=null;axisLock=null;clearActiveBrushContainer();
@@ -7016,12 +7193,14 @@ function commitShapeFill(st,points){
     return;
   }
 
-  // Keep mobile fills reasonably light while preserving the hand-drawn silhouette.
-  if(st.tool!=='boxbrush'&&profile.length>90){
-    const step=Math.ceil(profile.length/90);
-    const reduced=[];
-    for(let i=0;i<profile.length;i+=step)reduced.push(profile[i]);
-    profile=cleanProfile(reduced,.0025);
+  // Keep fills light with uniform resampling. Taking every Nth point made the
+  // final polygon visibly change at commit and could turn a smooth bend angular.
+  if(st.tool!=='boxbrush'&&profile.length>120){
+    const ref=(st?.plane||workplane).origin;
+    const px=Math.max(.0015,shapeWorldUnitsPerPixel(ref));
+    profile=resampleOpenShapeProfile(profile,px*3.0,120);
+    profile=smoothOpenShapeProfile(profile,1,.24);
+    profile=cleanProfile(profile,.0015);
   }
   if(profile.length<3||Math.abs(signedArea(profile))<.0005||!simplePolygon(profile)){
     showToast('SHAPE TOO SMALL / CROSSED');
@@ -7463,6 +7642,8 @@ function beginDraw(e){
     points:[uv.clone()],
     rawPoints:[uv.clone()],
     shapeAssistLevel:0,
+    previewShapeProfile:null,
+    lastStableShapeProfile:null,
     startScreen:vec2(e.clientX,e.clientY),
     lastScreen:vec2(e.clientX,e.clientY),
     hover:uv.clone(),
@@ -7501,6 +7682,7 @@ function beginDraw(e){
 }
 function beginOrContinuePolyline(e){
   const mobileProfile=!!(MA_UNIFIED_UI&&mobileDrawKind==='polyline'&&currentAppMode()==='draw');
+  const pencilPointFlow=!!(MA_IS_IPAD&&mobileProfile&&e.pointerType==='pen');
   const activePlane=(interaction?.kind==='polyline'&&interaction.plane)?interaction.plane:workplane;
   const p=pointOnPlaneXY(e.clientX,e.clientY,activePlane);if(!p)return;
   let raw=uvOnPlanePoint(p,activePlane);
@@ -7521,12 +7703,27 @@ function beginOrContinuePolyline(e){
       endpointSnap:null,refSnap:null,autoAxis:null,plane,
       polylineProfileMode:mobileProfile,
       eraseMode:!!(mobileProfile&&mobileEraseHeld),
-      eraseTargetId
+      eraseTargetId,
+      pencilPolyline:pencilPointFlow,
+      pencilPointerId:pencilPointFlow?e.pointerId:null,
+      pencilGestureAddsPoint:false
     };
+    if(pencilPointFlow)renderer.domElement.setPointerCapture?.(e.pointerId);
     updatePreview([raw],false);clearDrawEndpoint();clearDrawGuide();showInference('');return;
   }
 
   const st=interaction;
+  if(pencilPointFlow&&st.polylineProfileMode){
+    // Pencil POLY is point-by-point. Contact begins a live endpoint preview;
+    // releasing/tapping locks that endpoint. Do not insert a point on down,
+    // otherwise every drag creates an accidental vertex at its starting spot.
+    st.pencilPolyline=true;
+    st.pencilPointerId=e.pointerId;
+    st.pencilGestureAddsPoint=true;
+    renderer.domElement.setPointerCapture?.(e.pointerId);
+    updatePolylineHover(e);
+    return;
+  }
   const plane=st.plane||workplane;
   // POLY on the unified dock has exactly one automatic snap: back to its OWN
   // first vertex to close. It never snaps to other geometry or earlier vertices.
@@ -7609,13 +7806,38 @@ function updatePolylineHover(e){
     showInference(inferred?(inferred.axis.toUpperCase()+' AXIS'):'');
   }
 }
+function finishPencilPolylineGesture(e){
+  const st=interaction;
+  if(!st||st.kind!=='polyline'||!st.polylineProfileMode||!st.pencilPolyline)return false;
+  if(st.pencilPointerId!=null&&e?.pointerId!=null&&st.pencilPointerId!==e.pointerId)return false;
+
+  // The first Pencil tap establishes only the start point. Every later Pencil
+  // gesture previews an endpoint and locks it on release/tap.
+  if(st.pencilGestureAddsPoint){
+    if(e)updatePolylineHover(e);
+    if(st.endpointSnap?.snapped&&st.points.length>=3){
+      st.pencilPointerId=null;st.pencilGestureAddsPoint=false;
+      commitShapeFill(st,st.points);
+      return true;
+    }
+    const uv=(st.hover||st.points[st.points.length-1]).clone();
+    const last=st.points[st.points.length-1];
+    if(!last||uv.distanceToSquared(last)>1e-8)st.points.push(uv);
+    st.hover=uv.clone();st.endpointSnap=null;st.refSnap=null;st.autoAxis=null;
+    updatePreview(st.points,false);clearDrawEndpoint();clearDrawGuide();showInference('');
+  }
+
+  st.pencilPointerId=null;
+  st.pencilGestureAddsPoint=false;
+  return true;
+}
 function finishPolyline(){
   const st=interaction;if(!st||st.kind!=='polyline')return;
   if(st.points.length<3){showToast('POLYLINE NEEDS 3+ POINTS');return;}
   if(st.polylineProfileMode)commitShapeFill(st,st.points);
   else commitProfile(st,st.points);
 }
-function updateDraw(e){
+function updateDraw(e,{finalSample=false}={}){
   const st=interaction;
   if(!st||st.kind!=='draw')return;
 
@@ -7667,7 +7889,11 @@ function updateDraw(e){
       const target=vec2(sample.clientX,sample.clientY);
       const from=st.lastScreen.clone();
       const distance=target.distanceTo(from);
-      if(distance<1.2)continue;
+      const directLiftSample=finalSample&&sample===e;
+      // Pencil lift often shifts a few physical pixels after the visible stroke
+      // has ended. Do not turn that release jitter into a brand-new silhouette
+      // corner. Real omitted movement still lands because larger gaps pass.
+      if(distance<(directLiftSample?6:1.2))continue;
 
       // About one raw sample every 2.5 px. Cap interpolation per browser event
       // so a pathological jump cannot create hundreds of raycasts at once.
@@ -9186,7 +9412,10 @@ function marqueeSelection(a,b,{additive=false,toggle=false}={}){
   setSelection(masses.filter(m=>resultIds.has(m.id)));
 }
 function beginMarquee(e){
-  const toggle=!!(MA_UNIFIED_UI&&currentAppMode()==='select');
+  const pencilSelection=!!(MA_IS_IPAD&&ipadPencilMode&&e?.pointerType==='pen');
+  const toggle=pencilSelection
+    ?!!ipadPencilMultiSelect
+    :!!(MA_UNIFIED_UI&&currentAppMode()==='select');
   const additive=!!e.shiftKey&&!toggle;
   marqueeState={
     pointerId:e.pointerId,
@@ -10566,6 +10795,7 @@ function enterIPadPencilMode({announce=true}={}){
 
   ipadPencilAvailable=true;
   ipadPencilMode=true;
+  ipadPencilMultiSelect=false;
   pencilSelectManuallyOff=false;
   syncIPadInputModeUI();
 
@@ -10625,10 +10855,12 @@ function enterIPadFingerMode({announce=true}={}){
   if(pencilDrawButtonPress?.timer)clearTimeout(pencilDrawButtonPress.timer);
   pencilDrawButtonPress=null;
   clearDrawHoldCancelTimer();
+  clearSelectHoldCancelTimer();
   clearTransformHoldCancelTimer();
   clearMobileStraightHold();
 
   drawHoldPointerCancelledForPen=false;
+  selectHoldPointerCancelledForPen=false;
   transformHoldPointerCancelledForPen=false;
   penActive=false;
   stylusTouchFallbackIds.clear();
@@ -10653,6 +10885,7 @@ function enterIPadFingerMode({announce=true}={}){
   finalizeRotatePivot(false);
 
   ipadPencilMode=false;
+  ipadPencilMultiSelect=false;
   pencilSelectManuallyOff=false;
   mobileInputMode='navi';
 
@@ -10725,6 +10958,22 @@ window.addEventListener('pointerdown',e=>{
     registerIPadPencil();
   }
 },{capture:true,passive:true});
+window.addEventListener('pointermove',e=>{
+  if(e.pointerType==='pen'&&selectHoldPointerCancelledForPen&&selectModeHeld){
+    clearSelectHoldCancelTimer();
+    scheduleSelectHoldCancelAfterPencil(1400);
+  }
+},{capture:true,passive:true});
+window.addEventListener('pointerup',e=>{
+  if(e.pointerType==='pen'&&selectHoldPointerCancelledForPen&&selectModeHeld){
+    scheduleSelectHoldCancelAfterPencil(1400);
+  }
+},{capture:true,passive:true});
+window.addEventListener('pointercancel',e=>{
+  if(e.pointerType==='pen'&&selectHoldPointerCancelledForPen&&selectModeHeld){
+    scheduleSelectHoldCancelAfterPencil(1400);
+  }
+},{capture:true,passive:true});
 
 function deactivatePencilDraw(){
   // v7.85: on iPad ADD / ERASE are latched tools, but tapping the already
@@ -10744,11 +10993,17 @@ function deactivatePencilDraw(){
   mobileEraseHeld=false;
   mobileInputMode='navi';
 
-  // Stay neutral after toggling ADD / ERASE off. In Pencil mode the next
-  // Pencil contact may re-enter Select, but the SELECT button stays off now.
-  pencilSelectManuallyOff=!!ipadPencilMode;
-  deactivateSelectMode(true);
-  showToast('NAVI');
+  // Pencil mode always has selection available when no draw tool is latched.
+  // Leaving ADD / ERASE therefore returns directly to Single Select.
+  pencilSelectManuallyOff=false;
+  ipadPencilMultiSelect=false;
+  if(ipadPencilMode&&viewMode==='workspace'&&sceneHasSelectableGeometry()){
+    activateSelectMode();
+    showToast('SINGLE SELECT');
+  }else{
+    deactivateSelectMode(true);
+    showToast('NAVI');
+  }
 }
 
 function clearLatchedDrawForFunctionSwitch(){
@@ -10780,6 +11035,7 @@ function clearLatchedDrawForFunctionSwitch(){
 function armDesktopDraw(erase=false){
   // ADD / ERASE leave persistent Select mode and clear its contextual menu.
   if(ipadPencilMode){
+    ipadPencilMultiSelect=false;
     clearDrawHoldCancelTimer();
     drawHoldPointerCancelledForPen=false;
     drawModeHeld=false;
@@ -11036,6 +11292,29 @@ if(selectHoldBtn){
     e.preventDefault();e.stopPropagation();
     unifiedUIPointers.add(e.pointerId);
 
+    // v8.46 — iPad Pencil mode: SELECT is a persistent Single/Multi toggle.
+    // Fingers still never select in the viewport; they only press this UI control
+    // or navigate. Pencil performs all actual picking.
+    if(MA_IS_IPAD&&ipadPencilMode&&e.pointerType==='touch'){
+      if(!selectModeAvailable()){
+        updateMobileDrawUI();
+        return;
+      }
+      if(interaction||marqueeState)cancelInteraction(true);
+      clearLatchedDrawForFunctionSwitch();
+      selectModeHeld=false;
+      selectModeHoldPointerId=null;
+      selectModeHoldPointerType=null;
+      selectHoldPointerCancelledForPen=false;
+      clearSelectHoldCancelTimer();
+      ipadPencilMultiSelect=!ipadPencilMultiSelect;
+      pencilSelectManuallyOff=false;
+      activateSelectMode();
+      updateMobileDrawUI();
+      showToast(ipadPencilMultiSelect?'MULTI SELECT':'SINGLE SELECT');
+      return;
+    }
+
     // Desktop hold-equivalent: right-click SELECT arms one Window Select drag.
     if(!MA_DRAW_MOBILE&&e.pointerType==='mouse'&&e.button===2){
       if(selectModeAvailable()){
@@ -11147,6 +11426,14 @@ if(selectHoldBtn){
     if(!press||press.pointerId!==e.pointerId)return;
     if(press.timer)clearTimeout(press.timer);
     if(press.held&&press.pointerType==='touch'&&selectModeHeld){
+      // In iPad Pencil mode, Pencil contact may cancel the finger PointerEvent
+      // even though the user is still holding SELECT. Preserve the temporary
+      // multi-select state for Pencil instead of dropping back to single-select.
+      if(MA_IS_IPAD&&ipadPencilMode&&deferSelectHoldCancelForPen()){
+        selectButtonPress=null;
+        updateMobileDrawUI();
+        return;
+      }
       endSelectModeHold(syntheticHoldEvent(e));
       if(!selectedMasses().length)deactivateSelectMode(false);
     }
@@ -11731,7 +12018,7 @@ function endModelPointer(e){
     // iPadOS does not guarantee a pointermove at the exact lift position.
     // Sample pointer-up once before commit so quick SHAPE strokes keep their
     // final segment and RECT/brush strokes also finish where the Pencil lifted.
-    updateDraw(e);
+    updateDraw(e,{finalSample:true});
     endDraw();
   }
   else if(interaction?.kind==='sphereDraw')endSphereDraw();
@@ -12182,7 +12469,12 @@ renderer.domElement.addEventListener('pointerdown',e=>{
     if(e.pointerType==='touch'){
       e.preventDefault();
 
+      // v8.46 — Pencil mode is strict: fingers are ALWAYS navigation input,
+      // including while SELECT is held. Multi-select is performed only by Pencil.
       if(ipadPencilMode){
+        // If WebKit previously cancelled the SELECT-holding finger for Pencil,
+        // a new viewport finger gesture is an unambiguous return to NAVI.
+        if(selectHoldPointerCancelledForPen&&selectModeHeld)endSelectModeHold();
         beginUnifiedTouchNavigation(e);
         return;
       }
@@ -12240,7 +12532,8 @@ renderer.domElement.addEventListener('pointerdown',e=>{
               startY:e.clientY,
               startTime:performance.now(),
               moved:false,
-              wasSelected:isSelectedMass(heldMass)
+              wasSelected:isSelectedMass(heldMass),
+              additive:true
             };
             renderer.domElement.setPointerCapture?.(e.pointerId);
             return;
@@ -12266,7 +12559,8 @@ renderer.domElement.addEventListener('pointerdown',e=>{
             startY:e.clientY,
             startTime:performance.now(),
             moved:false,
-            wasSelected:isSelectedMass(m)
+            wasSelected:isSelectedMass(m),
+            additive:false
           };
           renderer.domElement.setPointerCapture?.(e.pointerId);
           return;
@@ -12280,6 +12574,11 @@ renderer.domElement.addEventListener('pointerdown',e=>{
 
     if(e.pointerType==='pen'){
       e.preventDefault();
+
+      if(selectHoldPointerCancelledForPen&&selectModeHeld){
+        // Pencil inherits the SELECT hold if iPadOS cancelled the holding finger.
+        clearSelectHoldCancelTimer();
+      }
 
       // Explicit Finger mode is iPhone-style touch only for modelling.
       if(MA_IS_IPAD&&ipadInputModePreference==='finger'){
@@ -12356,6 +12655,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{
             startTime:performance.now(),
             moved:false,
             wasSelected:isSelectedMass(m),
+            additive:!!(MA_IS_IPAD&&ipadPencilMode&&ipadPencilMultiSelect),
             pointerType:'pen'
           };
           penActive=true;
@@ -12606,6 +12906,13 @@ window.addEventListener('pointermove',e=>{
         return;
       }
 
+      if(currentAppMode()==='draw'&&interaction?.kind==='polyline'&&!penActive){
+        // On Pencil-hover capable iPads, keep the next POLY segment live even
+        // between taps. Non-hover iPads still get the same preview while the
+        // next Pencil contact is dragged.
+        updatePolylineHover(e);
+        return;
+      }
       if(currentAppMode()==='draw'&&penActive){
         updateModelPointer(e);
         armMobileStraightHold(e);
@@ -12664,7 +12971,7 @@ window.addEventListener('pointerup',e=>{
       return;
     }
     if(e.pointerType==='touch'){
-      if(ipadPencilMode){
+      if(ipadPencilMode&&mobileSelectTap?.pointerId!==e.pointerId&&marqueeState?.pointerId!==e.pointerId){
         const pt=touchPointers.get(e.pointerId);
         if(touchGesture&&pt){
           touchGesture.lastX=e.clientX;touchGesture.lastY=e.clientY;
@@ -12714,7 +13021,9 @@ window.addEventListener('pointerup',e=>{
           mobileSelectTap=null;
           if(!candidate.moved&&performance.now()-candidate.startTime<500){
             const m=massById(candidate.massId);
-            if(m)selectInteractive(m,true);
+            // Normal Select is exclusive. Holding SELECT temporarily turns taps
+            // into additive/toggle picks for building a multi-selection.
+            if(m)selectInteractive(m,!!candidate.additive);
           }
           return;
         }
@@ -12779,7 +13088,9 @@ window.addEventListener('pointerup',e=>{
         penActive=false;
         if(!candidate.moved&&performance.now()-candidate.startTime<850){
           const m=massById(candidate.massId);
-          if(m)selectInteractive(m,true);
+          // Pencil Single Select replaces the selection. Persistent Multi Select
+          // adds/removes the tapped mass or group until SELECT is tapped again.
+          if(m)selectInteractive(m,!!candidate.additive);
         }
         return;
       }
@@ -12811,7 +13122,11 @@ window.addEventListener('pointerup',e=>{
       const armedSelect=false;
 
       if(currentAppMode()==='draw'&&penActive){
-        endModelPointer(e);
+        if(interaction?.kind==='polyline'&&interaction.polylineProfileMode&&interaction.pencilPolyline){
+          finishPencilPolylineGesture(e);
+        }else{
+          endModelPointer(e);
+        }
       }else if(currentAppMode()==='select'&&penActive){
         endModelPointer(e);
       }
@@ -12831,7 +13146,10 @@ window.addEventListener('pointerup',e=>{
           desktopShapeArmed=true;
           desktopSelectArmed=false;
           mobileInputMode='draw';
-          setTool(mobileDrawTool());
+          // POLY is a multi-tap interaction. Calling setTool() here even with
+          // the same tool cancels interaction, so the next Pencil tap used to
+          // start over from point 1. Keep the current polyline alive.
+          if(activeTool!==mobileDrawTool())setTool(mobileDrawTool());
           setSelectionGizmosEnabled(false);
           finalizeRotatePivot(false);
           updateMobileDrawUI();
@@ -12902,7 +13220,9 @@ window.addEventListener('pointerup',e=>{
         desktopSelectArmed=false;
         mobileInputMode='draw';
         mobileEraseHeld=drawHoldAction==='erase';
-        setTool(mobileDrawTool());
+        // Preserve multi-click POLY state between clicks. setTool() always
+        // cancels interactions, even when asked to select the already active tool.
+        if(activeTool!==mobileDrawTool())setTool(mobileDrawTool());
         setSelectionGizmosEnabled(false);
         finalizeRotatePivot(false);
         updateMobileDrawUI();
@@ -12975,9 +13295,12 @@ window.addEventListener('pointercancel',e=>{
       penActive=false;
 
       // POLY is a multi-tap tool. iPadOS can report a normal Pencil lift as
-      // pointercancel; keep the in-progress polygon alive so the next Pencil tap
-      // adds the next vertex instead of silently discarding the whole shape.
+      // pointercancel. If this was an active endpoint gesture, treat it exactly
+      // like release; otherwise keep the in-progress polygon alive.
       if(interaction?.kind==='polyline'){
+        if(interaction.polylineProfileMode&&interaction.pencilPolyline&&interaction.pencilPointerId===e.pointerId){
+          finishPencilPolylineGesture(e);
+        }
         updateMobileDrawUI();
         return;
       }
@@ -12993,7 +13316,7 @@ window.addEventListener('pointercancel',e=>{
         // stroke exactly like pointerup instead of making it vanish.
         if(pointCount>=3){
           try{
-            updateDraw(e);
+            updateDraw(e,{finalSample:true});
             endDraw();
           }catch(_){
             cancelInteraction(true);
