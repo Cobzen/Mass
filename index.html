@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.55">
+<meta name="ma-build" content="8.57">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.55</title>
+<title>MA 3D · v8.57</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.55';
+  const CURRENT_BUILD = '8.57';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -9686,9 +9686,10 @@ function endMarquee(e=null,{commit=true}={}){
   const dist=st.start.distanceTo(st.current);
   if(commit){
     if(dist<4){
-      // Keep the existing Select-mode tap behavior; only a real dragged window
-      // performs toggle selection.
-      if(!st.additive&&!st.toggle)setSelection([]);
+      // v8.57 — a plain empty-space tap in Select is the same global backtrack
+      // as ESC / Space. A real drag still performs Window Select normally.
+      if(MA_UNIFIED_UI&&currentAppMode()==='select')performGlobalBacktrack();
+      else if(!st.additive&&!st.toggle)setSelection([]);
     }else{
       marqueeSelection(st.start,st.current,{
         additive:st.additive,
@@ -12801,7 +12802,9 @@ renderer.domElement.addEventListener('pointerdown',e=>{
         // If WebKit previously cancelled the SELECT-holding finger for Pencil,
         // a new viewport finger gesture is an unambiguous return to NAVI.
         if(selectHoldPointerCancelledForPen&&selectModeHeld)endSelectModeHold();
+        const emptySelectTap=currentAppMode()==='select'&&!massFromHit(raycastMasses(e.clientX,e.clientY));
         beginUnifiedTouchNavigation(e);
+        if(emptySelectTap&&touchGesture)touchGesture.emptySelectBacktrack=true;
         return;
       }
 
@@ -12892,8 +12895,10 @@ renderer.domElement.addEventListener('pointerdown',e=>{
           return;
         }
 
-        // Empty space navigates. Window Select only exists while SELECT is held.
+        // Empty space still navigates when dragged. A stationary tap is the
+        // same backtrack as ESC / Space and leaves Select completely.
         beginUnifiedTouchNavigation(e);
+        if(touchGesture)touchGesture.emptySelectBacktrack=true;
         return;
       }
     }
@@ -13307,7 +13312,8 @@ window.addEventListener('pointerup',e=>{
         if(!touchPointers.size){
           const g=touchGesture,duration=g?performance.now()-g.startTime:Infinity;
           if(g&&!g.moved&&duration<600){
-            if(g.maxCount===2){undo();showToast('UNDO');}
+            if(g.emptySelectBacktrack&&g.maxCount===1)performGlobalBacktrack();
+            else if(g.maxCount===2){undo();showToast('UNDO');}
             else if(g.maxCount===3){redo();showToast('REDO');}
           }
           touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;
@@ -13384,7 +13390,8 @@ window.addEventListener('pointerup',e=>{
         if(!touchPointers.size){
           const g=touchGesture,duration=g?performance.now()-g.startTime:Infinity;
           if(g&&!g.moved&&duration<600){
-            if(g.maxCount===2){undo();showToast('UNDO');}
+            if(g.emptySelectBacktrack&&g.maxCount===1)performGlobalBacktrack();
+            else if(g.maxCount===2){undo();showToast('UNDO');}
             else if(g.maxCount===3){redo();showToast('REDO');}
           }
           touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;
@@ -13709,12 +13716,67 @@ document.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
 document.addEventListener('gesturechange',e=>e.preventDefault(),{passive:false});
 
 
+function performGlobalBacktrack(){
+  if(brushSizing)finishBrushSizing(true);
+  if(interaction){
+    const before=interaction.before;
+    cancelInteraction(false);
+    if(before)restoreState(before);
+  }else{
+    clearPreview();clearSnapVisual();clearSpherePreview();showInference('');
+  }
+
+  if(ui.shortcutPanel?.style.display==='flex')openShortcutPanel(false);
+  if(maMenuDockOpen)setMAMenuDockOpen(false);
+  if(exportDockOpen)setExportDockOpen(false);
+  if(sceneDockOpen)setSceneDockOpen(false);
+  if(safeFrameDockOpen)openSafeFramePanel(false);
+  lookSettingsPanelSuppressed=true;
+  const light=document.getElementById('sunDirPanel');
+  const depth=document.getElementById('depthRangePanel');
+  const workplanePanel=document.getElementById('viewWorkplanePanel');
+  if(light)light.style.display='none';
+  if(depth)depth.style.display='none';
+  if(workplanePanel)workplanePanel.style.display='none';
+
+  clearLatchedDrawForFunctionSwitch();
+  drawModeHeld=false;
+  desktopShapeArmed=false;
+  mobileEraseHeld=false;
+  selectModeActive=false;
+  selectModeHeld=false;
+  desktopSelectArmed=false;
+  desktopWindowSelectArmed=false;
+  moveArmed=false;
+  transformHoldMode=null;
+  desktopTransformArmed=false;
+  transformHoldReleasePending=false;
+  desktopAxisMoveArmed=null;
+  viewAxisHold=null;
+  viewJoystickGesture=null;
+  lookJoystickGesture=null;
+  axisLock=null;
+  mobileInputMode='navi';
+  mobileSelectTap=null;
+  mobileMovePointerId=null;
+  setJoystickKnob('view',null);
+  setJoystickKnob('look',null);
+  setSelectionGizmosEnabled(false);
+  finalizeRotatePivot(false);
+  if(selectedMasses().length)setSelection([]);
+  if(typeof transform!=='undefined'&&transform?.detach)transform.detach();
+  if(typeof rotateTransform!=='undefined'&&rotateTransform?.detach)rotateTransform.detach();
+  setTool('select');
+  updateMobileDrawUI();
+}
+
 let ctrlWorkplaneTap=false;
 window.addEventListener('keydown',e=>{
   if(shortcutCaptureActionId){handleShortcutCapture(e);return;}
-  // ESC remains the global backtrack even when the Shortcuts panel is open.
+  // ESC and Space are the global backtrack even when the Shortcuts panel is open.
   // Other keys stay in TEST INPUT mode while that panel is visible.
-  if(ui.shortcutPanel?.style.display==='flex'&&e.key!=='Escape'){e.preventDefault();e.stopPropagation();showShortcutInput(e,'TEST INPUT');return;}
+  const globalBacktrackKey=e.key==='Escape'||e.code==='Space'||e.key===' ';
+  if(ui.shortcutPanel?.style.display==='flex'&&!globalBacktrackKey){e.preventDefault();e.stopPropagation();showShortcutInput(e,'TEST INPUT');return;}
   if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;
   const k=e.key.toLowerCase();
 
@@ -13739,62 +13801,11 @@ window.addEventListener('keydown',e=>{
     e.preventDefault();if(e.key==='ArrowDown'){axisLock=null;return;}
     setPolylineAxisLock(e.key==='ArrowRight'?'x':e.key==='ArrowLeft'?'y':'z');return;
   }
-  // Space has no default action. It remains available for user-assigned shortcuts.
-  // ESC is the canonical desktop/mobile backtrack: neutral NAVI, no active tool,
+  // ESC and Space share the canonical backtrack: neutral NAVI, no active tool,
   // no selection and no contextual menu/panel. Camera/view settings are preserved.
-  if(k==='escape'){
+  if(globalBacktrackKey){
     e.preventDefault();
-    if(brushSizing)finishBrushSizing(true);
-    if(interaction){
-      const before=interaction.before;
-      cancelInteraction(false);
-      if(before)restoreState(before);
-    }else{
-      clearPreview();clearSnapVisual();clearSpherePreview();showInference('');
-    }
-
-    if(ui.shortcutPanel?.style.display==='flex')openShortcutPanel(false);
-    if(maMenuDockOpen)setMAMenuDockOpen(false);
-    if(exportDockOpen)setExportDockOpen(false);
-    if(sceneDockOpen)setSceneDockOpen(false);
-    if(safeFrameDockOpen)openSafeFramePanel(false);
-    lookSettingsPanelSuppressed=true;
-    const light=document.getElementById('sunDirPanel');
-    const depth=document.getElementById('depthRangePanel');
-    const workplanePanel=document.getElementById('viewWorkplanePanel');
-    if(light)light.style.display='none';
-    if(depth)depth.style.display='none';
-    if(workplanePanel)workplanePanel.style.display='none';
-
-    clearLatchedDrawForFunctionSwitch();
-    drawModeHeld=false;
-    desktopShapeArmed=false;
-    mobileEraseHeld=false;
-    selectModeActive=false;
-    selectModeHeld=false;
-    desktopSelectArmed=false;
-    desktopWindowSelectArmed=false;
-    moveArmed=false;
-    transformHoldMode=null;
-    desktopTransformArmed=false;
-    transformHoldReleasePending=false;
-    desktopAxisMoveArmed=null;
-    viewAxisHold=null;
-    viewJoystickGesture=null;
-    lookJoystickGesture=null;
-    axisLock=null;
-    mobileInputMode='navi';
-    mobileSelectTap=null;
-    mobileMovePointerId=null;
-    setJoystickKnob('view',null);
-    setJoystickKnob('look',null);
-    setSelectionGizmosEnabled(false);
-    finalizeRotatePivot(false);
-    if(selectedMasses().length)setSelection([]);
-    if(typeof transform!=='undefined'&&transform?.detach)transform.detach();
-    if(typeof rotateTransform!=='undefined'&&rotateTransform?.detach)rotateTransform.detach();
-    setTool('select');
-    updateMobileDrawUI();
+    performGlobalBacktrack();
     return;
   }
   if(e.key==='Enter'&&interaction?.kind==='polyline'){e.preventDefault();finishPolyline();return;}
