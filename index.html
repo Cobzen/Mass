@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.62">
+<meta name="ma-build" content="8.64">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.62</title>
+<title>MA 3D · v8.64</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.62';
+  const CURRENT_BUILD = '8.64';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -2175,7 +2175,6 @@ html.ma-iphone #selectHoldBtn.iphoneSelectMultiHold.primaryChoice{
     <div id="lookJoystickKnob" class="joyKnob"></div>
   </div>
 
-  <div id="dockDragHandle" aria-label="Move controls dock" title="Move dock"></div>
 </div>
 
   <button id="mainMenuButton" aria-label="Open menu" title="Menu">☰</button>
@@ -2269,6 +2268,9 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import ManifoldModule from 'https://cdn.jsdelivr.net/npm/manifold-3d@3.5.3/manifold.js';
 import { writePsd } from 'https://cdn.jsdelivr.net/npm/ag-psd@31.0.2/+esm';
+
+// v8.63 cleanup: removed unreachable legacy toolbar adapters, inert scene helpers, and obsolete dock-handle DOM.
+// v8.64 selection: marquee uses actual projected mesh triangles; Pencil fallback hit radius is tightened.
 
 const manifoldWasm=await ManifoldModule();
 manifoldWasm.setup();
@@ -2404,11 +2406,6 @@ function updateLighting(){
 let lastShadowFit=0;
 const shadowFitBox=new THREE.Box3();
 
-const TOOL_FAMILIES={
-  brush:['draw','boxbrush'],
-  profile:['polyline','box','circle','sphere']
-};
-const toolFamilyState={brush:'draw',profile:'polyline'};
 const TOOL_UI={
   draw:{icon:'∿',label:'Curve'},
   boxbrush:{icon:'▣',label:'Box Brush'},
@@ -2417,61 +2414,6 @@ const TOOL_UI={
   circle:{icon:'○',label:'Circle'},
   sphere:{icon:'●',label:'Sphere'}
 };
-function toolFamilyFor(t){
-  for(const [name,items] of Object.entries(TOOL_FAMILIES))if(items.includes(t))return name;
-  return null;
-}
-function updateToolFamilyButtons(){
-  for(const [name,items] of Object.entries(TOOL_FAMILIES)){
-    const id=name==='brush'?'brushFamilyBtn':'profileFamilyBtn';
-    const b=document.getElementById(id);if(!b)continue;
-    const remembered=items.includes(toolFamilyState[name])?toolFamilyState[name]:items[0];
-    const meta=TOOL_UI[remembered]||{icon:'•',label:remembered};
-    const icon=b.querySelector('.icon');if(icon)icon.textContent=meta.icon;
-    b.title=`${name==='brush'?'Brush':'2D Outline'} · ${meta.label} · tap again to cycle`;
-    b.classList.toggle('active',toolFamilyFor(activeTool)===name);
-  }
-}
-function cycleToolFamily(name){
-  const items=TOOL_FAMILIES[name];if(!items?.length)return;
-  const isActive=toolFamilyFor(activeTool)===name;
-  let target=toolFamilyState[name]||items[0];
-  if(isActive){
-    const i=Math.max(0,items.indexOf(activeTool));
-    target=items[(i+1)%items.length];
-  }
-  setTool(target);
-}
-const VIEW_CYCLE=[
-  {mode:'workspace',icon:'▧',label:'Workspace'},
-  {mode:'notan',icon:'■',label:'Masse'},
-  {mode:'shadow',icon:'◐',label:'Light'},
-  {mode:'depth',icon:'◫',label:'Depth / Fog'}
-];
-function updateViewCycleButton(){
-  const b=document.getElementById('viewCycleBtn');if(!b)return;
-  const v=VIEW_CYCLE.find(x=>x.mode===viewMode)||VIEW_CYCLE[0];
-  b.textContent=v.icon;
-  b.title=`${v.label} view · tap to cycle`;
-  b.setAttribute('aria-label',v.label);
-  const settings=document.getElementById('lightSettingsBtn');
-  if(settings){
-    if(viewMode==='depth'){
-      settings.textContent='↔';
-      settings.title='Depth range';
-      settings.setAttribute('aria-label','Depth range');
-    }else{
-      settings.textContent='☀';
-      settings.title='Notan light direction';
-      settings.setAttribute('aria-label','Notan light direction');
-    }
-  }
-}
-function cycleViewMode(){
-  let i=VIEW_CYCLE.findIndex(x=>x.mode===viewMode);if(i<0)i=0;
-  const next=VIEW_CYCLE[(i+1)%VIEW_CYCLE.length];
-  applyViewMode(next.mode);markSceneViewDirty();scheduleAutosave();showToast(next.label.toUpperCase());
-}
 
 let lookSettingsPanelSuppressed=false;
 function syncUnifiedLookSettings(){
@@ -2558,7 +2500,6 @@ function applyViewMode(mode,{rememberPrevious=true}={}){
   updateLighting();
   fitShadowCamera(true);
   groundGrid.visible=!thumbnail && viewMode!=='notan' && viewMode!=='depth';
-  updateViewCycleButton();
   if(viewMode!=='shadow'){
     const p=document.getElementById('sunDirPanel');
     if(p)p.style.display='none';
@@ -2638,10 +2579,6 @@ if(groundGrid.material){
 groundGrid.visible=true;
 scene.add(groundGrid);
 
-// Kept as an inert compatibility object because older UI code toggles it.
-const groundSurface=new THREE.Group();
-groundSurface.visible=false;
-scene.add(groundSurface);
 
 const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();
 const worldY=new THREE.Vector3(0,1,0);
@@ -3288,7 +3225,7 @@ function restoreViewRuntimeState(s){
   if(typeof postMat!=='undefined')postMat.uniforms.uThreshold.value=s.threshold;
   updateAllMassVisuals();updateLighting();fitShadowCamera(true);
   groundGrid.visible=!thumbnail&&viewMode!=='notan'&&viewMode!=='depth';
-  updateViewCycleButton();syncDepthRangeUI();renderViewport();
+  syncDepthRangeUI();renderViewport();
 }
 async function renderDetachedViewCanvas(spec,targetLongEdge=4096){
   applyViewMode(spec.mode,{rememberPrevious:false});
@@ -6082,10 +6019,10 @@ function raycastPencilSelectionTarget(x,y){
   // thin edges and small objects feel like they needed several taps. Probe a
   // compact screen-space ring only when the exact ray misses.
   const probes=[
-    [5,0],[-5,0],[0,5],[0,-5],
-    [4,4],[-4,4],[4,-4],[-4,-4],
-    [9,0],[-9,0],[0,9],[0,-9],
-    [7,7],[-7,7],[7,-7],[-7,-7]
+    // Keep only a very small physical-footprint fallback. The exact Pencil ray
+    // remains authoritative; nearby geometry should no longer win from ~10 px away.
+    [3,0],[-3,0],[0,3],[0,-3],
+    [3,3],[-3,3],[3,-3],[-3,-3]
   ];
 
   let best=null,bestOffset=Infinity,bestDepth=Infinity;
@@ -9663,9 +9600,7 @@ function setTool(t){
   cancelInteraction(false);clearSnapVisual();clearSpherePreview();
   if(prevTool!==t&&(prevTool==='draw'||prevTool==='boxbrush'||t==='draw'||t==='boxbrush'))clearActiveBrushContainer();
   activeTool=t;
-  const fam=toolFamilyFor(t);if(fam)toolFamilyState[fam]=t;
   document.querySelectorAll('.tool[data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===t));
-  updateToolFamilyButtons();
   
   // Only the current editing tool gets the strong highlight. State/view controls
   // use their own subtle indicators and never compete visually with the active tool.
@@ -9737,6 +9672,81 @@ function showMarquee(a,b){
 }
 function hideMarquee(){ui.marquee.style.display='none';marqueeState=null;}
 function projectedBounds(m){m.group.updateMatrixWorld(true);const box=new THREE.Box3().setFromObject(m.group);if(box.isEmpty())return null;const min=box.min,max=box.max,corners=[];for(const x of [min.x,max.x])for(const y of [min.y,max.y])for(const z of [min.z,max.z])corners.push(worldToClient(new THREE.Vector3(x,y,z)));return{minX:Math.min(...corners.map(p=>p.x)),maxX:Math.max(...corners.map(p=>p.x)),minY:Math.min(...corners.map(p=>p.y)),maxY:Math.max(...corners.map(p=>p.y))};}
+function rectsOverlap2D(a,b){return !(a.maxX<b.minX||a.minX>b.maxX||a.maxY<b.minY||a.minY>b.maxY);}
+function pointInRect2D(p,r){return p.x>=r.minX&&p.x<=r.maxX&&p.y>=r.minY&&p.y<=r.maxY;}
+function orient2D(a,b,c){return (b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);}
+function pointInTriangle2D(p,a,b,c){
+  const o1=orient2D(a,b,p),o2=orient2D(b,c,p),o3=orient2D(c,a,p),eps=1e-7;
+  const hasNeg=o1<-eps||o2<-eps||o3<-eps,hasPos=o1>eps||o2>eps||o3>eps;
+  return !(hasNeg&&hasPos);
+}
+function segmentsIntersect2D(a,b,c,d){
+  const eps=1e-7;
+  const o1=orient2D(a,b,c),o2=orient2D(a,b,d),o3=orient2D(c,d,a),o4=orient2D(c,d,b);
+  const on=(p,q,r)=>Math.min(p.x,r.x)-eps<=q.x&&q.x<=Math.max(p.x,r.x)+eps&&Math.min(p.y,r.y)-eps<=q.y&&q.y<=Math.max(p.y,r.y)+eps;
+  if(((o1>eps&&o2<-eps)||(o1<-eps&&o2>eps))&&((o3>eps&&o4<-eps)||(o3<-eps&&o4>eps)))return true;
+  if(Math.abs(o1)<=eps&&on(a,c,b))return true;
+  if(Math.abs(o2)<=eps&&on(a,d,b))return true;
+  if(Math.abs(o3)<=eps&&on(c,a,d))return true;
+  if(Math.abs(o4)<=eps&&on(c,b,d))return true;
+  return false;
+}
+function triangleIntersectsMarquee2D(a,b,c,r){
+  const triBounds={
+    minX:Math.min(a.x,b.x,c.x),maxX:Math.max(a.x,b.x,c.x),
+    minY:Math.min(a.y,b.y,c.y),maxY:Math.max(a.y,b.y,c.y)
+  };
+  if(!rectsOverlap2D(triBounds,r))return false;
+  if(pointInRect2D(a,r)||pointInRect2D(b,r)||pointInRect2D(c,r))return true;
+  const corners=[
+    {x:r.minX,y:r.minY},{x:r.maxX,y:r.minY},
+    {x:r.maxX,y:r.maxY},{x:r.minX,y:r.maxY}
+  ];
+  if(corners.some(p=>pointInTriangle2D(p,a,b,c)))return true;
+  const triEdges=[[a,b],[b,c],[c,a]],rectEdges=[
+    [corners[0],corners[1]],[corners[1],corners[2]],
+    [corners[2],corners[3]],[corners[3],corners[0]]
+  ];
+  for(const [p0,p1] of triEdges)for(const [q0,q1] of rectEdges)if(segmentsIntersect2D(p0,p1,q0,q1))return true;
+  return false;
+}
+function projectedGeometryIntersectsMarquee(m,r){
+  const g=m?.mesh?.geometry,pos=g?.attributes?.position;
+  if(!pos||pos.count<3)return false;
+
+  // Fast reject only. The actual decision below is made from projected triangles,
+  // never from the object's broad screen-space bounding rectangle.
+  const broad=projectedBounds(m);
+  if(!broad||!rectsOverlap2D(broad,r))return false;
+
+  m.mesh.updateWorldMatrix(true,false);
+  camera.updateMatrixWorld(true);
+  const canvasRect=renderer.domElement.getBoundingClientRect();
+  const index=g.index;
+  const triCount=Math.floor((index?index.count:pos.count)/3);
+  const world=new THREE.Vector3();
+  const a={x:0,y:0,z:0},b={x:0,y:0,z:0},c={x:0,y:0,z:0};
+  const projectVertex=(vertexIndex,out)=>{
+    world.fromBufferAttribute(pos,vertexIndex).applyMatrix4(m.mesh.matrixWorld).project(camera);
+    out.x=canvasRect.left+(world.x*.5+.5)*canvasRect.width;
+    out.y=canvasRect.top+(-world.y*.5+.5)*canvasRect.height;
+    out.z=world.z;
+    return Number.isFinite(out.x)&&Number.isFinite(out.y)&&Number.isFinite(out.z);
+  };
+
+  for(let t=0;t<triCount;t++){
+    const base=t*3;
+    const ia=index?index.getX(base):base;
+    const ib=index?index.getX(base+1):base+1;
+    const ic=index?index.getX(base+2):base+2;
+    if(!projectVertex(ia,a)||!projectVertex(ib,b)||!projectVertex(ic,c))continue;
+    // Skip triangles entirely beyond the camera clip volume. Partial crossings are
+    // still tested so edge-on/thin geometry remains selectable.
+    if((a.z<-1&&b.z<-1&&c.z<-1)||(a.z>1&&b.z>1&&c.z>1))continue;
+    if(triangleIntersectsMarquee2D(a,b,c,r))return true;
+  }
+  return false;
+}
 function marqueeSelection(a,b,{additive=false,toggle=false}={}){
   // Always normalize both corners. Window Select therefore has identical
   // geometry whether the gesture goes ↘, ↙, ↗ or ↖.
@@ -9744,13 +9754,7 @@ function marqueeSelection(a,b,{additive=false,toggle=false}={}){
 
   const picked=[];
   for(const m of masses){
-    const q=projectedBounds(m);
-    if(!q)continue;
-    const intersects=!(
-      q.maxX<r.minX||q.minX>r.maxX||
-      q.maxY<r.minY||q.minY>r.maxY
-    );
-    if(intersects)picked.push(m);
+    if(projectedGeometryIntersectsMarquee(m,r))picked.push(m);
   }
 
   // Expand through groups first so a grouped object is always toggled as one unit.
@@ -9841,7 +9845,7 @@ function endMarquee(e=null,{commit=true}={}){
 }
 
 // --- UI -------------------------------------------------------------------------
-updateToolFamilyButtons();updateViewCycleButton();
+
 let libraryNavigationStarting=false;
 function activateLibraryNavigation(e=null){
   e?.preventDefault?.();
