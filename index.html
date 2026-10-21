@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.70">
+<meta name="ma-build" content="8.71">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.70</title>
+<title>MA 3D · v8.71</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.70';
+  const CURRENT_BUILD = '8.71';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -1093,6 +1093,7 @@ html.ma-iphone{
   --ma-control-size:52px;
   --ma-control-gap:4px;
   --ma-side-dock-pad:4px;
+  --ma-iphone-edge-gap:6px;
 }
 
 /* Keep the iPhone hamburger compact. Its corner position is fixed by
@@ -1921,7 +1922,7 @@ html.ma-iphone:not(.ma-iphone-landscape) #maBottomDock{
   right:auto !important;
   top:auto !important;
   /* Keep controls comfortably above the home indicator; the canvas continues behind. */
-  bottom:calc(env(safe-area-inset-bottom) + 6px) !important;
+  bottom:calc(env(safe-area-inset-bottom) + var(--ma-iphone-edge-gap)) !important;
   transform:none !important;
 }
 html.ma-iphone:not(.ma-iphone-landscape) #mainMenuButton{
@@ -1934,7 +1935,7 @@ html.ma-iphone:not(.ma-iphone-landscape) #mainMenuButton{
 }
 html.ma-iphone.ma-iphone-landscape #maBottomDock{
   flex-direction:column !important;
-  left:max(4px, env(safe-area-inset-left)) !important;
+  left:calc(env(safe-area-inset-left) + var(--ma-iphone-edge-gap)) !important;
   right:auto !important;
   top:calc(50% - (var(--ma-dock-length) / 2)) !important;
   bottom:auto !important;
