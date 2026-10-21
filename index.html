@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.72">
+<meta name="ma-build" content="8.73">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.72</title>
+<title>MA 3D · v8.73</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.72';
+  const CURRENT_BUILD = '8.73';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -2075,17 +2075,16 @@ html.ma-ipad.ma-pencil-mode #selectHoldBtn.pencilMultiSelect.primaryChoice{
 }
 </style>
 
-/* v8.51 — iPhone SELECT visual rule is purely physical:
-   button down = dark, button up = neutral. This stays true before Select,
-   in Single Select, and throughout the temporary Multi Select hold. */
+/* v8.73 — iPhone SELECT shows its latched mode clearly:
+   inactive = neutral, Select active = grey, physical press/hold = dark. */
 <style id="ma-v848-iphone-select-states">
 html.ma-iphone #selectHoldBtn.iphoneSelectSingle,
 html.ma-iphone #selectHoldBtn.iphoneSelectSingle.active,
 html.ma-iphone #selectHoldBtn.iphoneSelectSingle.primaryContextActive,
 html.ma-iphone #selectHoldBtn.iphoneSelectSingle.primaryChoice{
-  background:var(--control) !important;
+  background:#d9d9d4 !important;
   color:var(--ink) !important;
-  border-color:var(--line) !important;
+  border-color:rgba(70,70,68,.34) !important;
 }
 html.ma-iphone #selectHoldBtn.iphoneSelectPressPreview,
 html.ma-iphone #selectHoldBtn.iphoneSelectPressPreview.active,
