@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.57">
+<meta name="ma-build" content="8.58">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.57</title>
+<title>MA 3D · v8.58</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.57';
+  const CURRENT_BUILD = '8.58';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -11517,7 +11517,11 @@ for(const id of IPHONE_DRAW_DOCK_IDS){
 
 function promoteIPhoneSelectPressToMulti(){
   const press=selectButtonPress;
-  if(!press?.iphone||!press.startedActive||press.held||!selectModeActive)return false;
+  // v8.58 — the very first SELECT press may become Multi Select too. Select is
+  // activated immediately on pointer-down, so startedActive must not gate the
+  // promotion. Keeping the button down and adding another viewport finger can
+  // therefore enter additive/toggle selection on the first Select activation.
+  if(!press?.iphone||press.held||!selectModeActive)return false;
   if(press.timer){clearTimeout(press.timer);press.timer=null;}
   beginSelectModeHold(press.event);
   if(!selectModeHeld)return false;
@@ -11581,12 +11585,17 @@ if(selectHoldBtn){
         iphone:true
       };
       if(!press.startedActive){
-        // v8.50 — Select becomes logically active on pointer-down. The button
-        // still previews black until release, but the very first second-finger
-        // pick now works immediately instead of waiting for the button release.
+        // v8.58 — Select becomes logically active on the first pointer-down and
+        // that same physical press can continue into Multi Select. A short release
+        // still leaves Single Select active; holding or adding another viewport
+        // finger promotes the press instead of requiring a second Select cycle.
         iphoneSelectPressPreview=true;
         activateSelectMode();
         updateMobileDrawUI();
+        press.timer=setTimeout(()=>{
+          if(selectButtonPress!==press)return;
+          promoteIPhoneSelectPressToMulti();
+        },IPHONE_SELECT_HOLD_MS);
       }else{
         // v8.51 — an already-active SELECT also goes dark immediately on
         // pointer-down. If the press becomes a Multi hold, the dedicated hold
@@ -12792,7 +12801,10 @@ renderer.domElement.addEventListener('pointerdown',e=>{
       // v8.50 — if SELECT is already active and its button is currently being
       // held, the first viewport contact immediately promotes that press to
       // Multi Select. The user never has to wait out the hold timer or tap twice.
-      if(MA_IS_IPHONE&&selectButtonPress?.iphone&&selectButtonPress.startedActive&&!selectButtonPress.held){
+      if(MA_IS_IPHONE&&selectButtonPress?.iphone&&!selectButtonPress.held&&selectModeActive){
+        // v8.58 — works on the first Select activation as well as later ones.
+        // The second viewport finger promotes immediately; no extra Select tap
+        // and no hold-timer wait is required.
         promoteIPhoneSelectPressToMulti();
       }
 
