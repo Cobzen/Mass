@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.47">
+<meta name="ma-build" content="8.52">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.47</title>
+<title>MA 3D · v8.52</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.47';
+  const CURRENT_BUILD = '8.52';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -2012,6 +2012,36 @@ html.ma-ipad.ma-pencil-mode #selectHoldBtn.pencilMultiSelect.primaryChoice{
 }
 </style>
 
+/* v8.51 — iPhone SELECT visual rule is purely physical:
+   button down = dark, button up = neutral. This stays true before Select,
+   in Single Select, and throughout the temporary Multi Select hold. */
+<style id="ma-v848-iphone-select-states">
+html.ma-iphone #selectHoldBtn.iphoneSelectSingle,
+html.ma-iphone #selectHoldBtn.iphoneSelectSingle.active,
+html.ma-iphone #selectHoldBtn.iphoneSelectSingle.primaryContextActive,
+html.ma-iphone #selectHoldBtn.iphoneSelectSingle.primaryChoice{
+  background:var(--control) !important;
+  color:var(--ink) !important;
+  border-color:var(--line) !important;
+}
+html.ma-iphone #selectHoldBtn.iphoneSelectPressPreview,
+html.ma-iphone #selectHoldBtn.iphoneSelectPressPreview.active,
+html.ma-iphone #selectHoldBtn.iphoneSelectPressPreview.primaryContextActive,
+html.ma-iphone #selectHoldBtn.iphoneSelectPressPreview.primaryChoice{
+  background:var(--ink) !important;
+  color:#fff !important;
+  border-color:var(--ink) !important;
+}
+html.ma-iphone #selectHoldBtn.iphoneSelectMultiHold,
+html.ma-iphone #selectHoldBtn.iphoneSelectMultiHold.active,
+html.ma-iphone #selectHoldBtn.iphoneSelectMultiHold.primaryContextActive,
+html.ma-iphone #selectHoldBtn.iphoneSelectMultiHold.primaryChoice{
+  background:var(--ink) !important;
+  color:#fff !important;
+  border-color:var(--ink) !important;
+}
+</style>
+
 </head>
 <body>
 <div id="app">
@@ -2237,6 +2267,7 @@ document.addEventListener('dragstart',e=>e.preventDefault(),{capture:true});
 import * as THREE from 'three';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import ManifoldModule from 'https://cdn.jsdelivr.net/npm/manifold-3d@3.5.3/manifold.js';
 import { writePsd } from 'https://cdn.jsdelivr.net/npm/ag-psd@31.0.2/+esm';
 
@@ -2656,7 +2687,9 @@ let selectHoldCancelTimer=null,selectHoldPointerCancelledForPen=false;
 let transformHoldCancelTimer=null,transformHoldPointerCancelledForPen=false;
 let selectModeHeld=false,selectModeHoldPointerId=null,selectModeHoldPointerType=null,desktopSelectArmed=false;
 let selectModeActive=false,selectButtonPress=null,desktopWindowSelectArmed=false;
+let iphoneSelectPressPreview=false; // v8.51 — dark whenever the iPhone SELECT button is physically down
 const SELECT_BUTTON_HOLD_MS=280;
+const IPHONE_SELECT_HOLD_MS=160; // quicker temporary Multi Select on iPhone
 let drawHoldAction='add',selectHoldAction='select';
 let selectionTransformAxis='x';
 let moveArmed=false,transformHoldMode=null,transformHoldPointerId=null,transformHoldPointerType=null;
@@ -2982,6 +3015,143 @@ async function deliverExportFiles(files,title){
     setTimeout(()=>downloadBlob(file,file.name),i*140);
   }
   return true;
+}
+
+// v8.52 — clean 3D interchange exports. Both formats are built only from the
+// canonical mass meshes. UI helpers, outlines, selection tint, workplanes,
+// grids, cameras and preview geometry are intentionally excluded.
+function modelExportBaseName(){
+  const raw=String(currentProjectName||'MA-3D').trim()||'MA-3D';
+  return raw.replace(/[^a-z0-9._-]+/gi,'-').replace(/^-+|-+$/g,'')||'MA-3D';
+}
+function modelExportObjectName(m){
+  const raw=String(m?.name||`MASS-${m?.id??''}`).trim()||`MASS-${m?.id??''}`;
+  return raw.replace(/[^a-z0-9._-]+/gi,'_').replace(/^_+|_+$/g,'')||`MASS_${m?.id??0}`;
+}
+function liveExportMasses(){return masses.filter(m=>m&&!m._disposed&&m.mesh?.geometry&&m.group);}
+function exportGeometryWorldClone(m){
+  m.group.updateWorldMatrix(true,true);
+  const g=m.mesh.geometry.clone();
+  g.applyMatrix4(m.group.matrixWorld);
+  if(!g.getAttribute('normal'))g.computeVertexNormals();
+  g.computeBoundingBox();g.computeBoundingSphere();
+  return g;
+}
+function exportNumber(v){
+  if(!Number.isFinite(v))return '0';
+  const n=Math.abs(v)<1e-10?0:v;
+  return Number(n.toFixed(7)).toString();
+}
+function buildOBJText(){
+  const exportMasses=liveExportMasses();
+  if(!exportMasses.length)return '';
+  const lines=['# MA 3D OBJ export','# Geometry only · no materials · no helpers'];
+  let vertexBase=1,normalBase=1,lastGroup=null;
+  for(const m of exportMasses){
+    const g=exportGeometryWorldClone(m);
+    const pos=g.getAttribute('position'),normal=g.getAttribute('normal');
+    if(!pos||pos.count<3){g.dispose();continue;}
+    const groupName=m.groupId==null?'UNGROUPED':`GROUP_${m.groupId}`;
+    if(groupName!==lastGroup){lines.push(`g ${groupName}`);lastGroup=groupName;}
+    lines.push(`o ${modelExportObjectName(m)}`);
+    for(let i=0;i<pos.count;i++)lines.push(`v ${exportNumber(pos.getX(i))} ${exportNumber(pos.getY(i))} ${exportNumber(pos.getZ(i))}`);
+    const hasNormals=!!normal&&normal.count===pos.count;
+    if(hasNormals){
+      for(let i=0;i<normal.count;i++)lines.push(`vn ${exportNumber(normal.getX(i))} ${exportNumber(normal.getY(i))} ${exportNumber(normal.getZ(i))}`);
+    }
+    const index=g.index?.array||null;
+    const triCount=index?Math.floor(index.length/3):Math.floor(pos.count/3);
+    for(let t=0;t<triCount;t++){
+      const ia=index?index[t*3]:t*3,ib=index?index[t*3+1]:t*3+1,ic=index?index[t*3+2]:t*3+2;
+      const a=vertexBase+ia,b=vertexBase+ib,c=vertexBase+ic;
+      if(hasNormals){
+        const na=normalBase+ia,nb=normalBase+ib,nc=normalBase+ic;
+        lines.push(`f ${a}//${na} ${b}//${nb} ${c}//${nc}`);
+      }else lines.push(`f ${a} ${b} ${c}`);
+    }
+    vertexBase+=pos.count;
+    if(hasNormals)normalBase+=normal.count;
+    g.dispose();
+  }
+  return lines.join('\n')+'\n';
+}
+async function exportCurrentOBJ(){
+  const text=buildOBJText();
+  if(!text){showToast('NO GEOMETRY TO EXPORT');return false;}
+  try{
+    const name=`${modelExportBaseName()}.obj`;
+    const file=new File([text],name,{type:'model/obj'});
+    const delivered=await deliverExportFile(file,'MA 3D · OBJ');
+    if(delivered)showToast('OBJ EXPORTED');
+    return delivered;
+  }catch(err){console.warn('OBJ export failed',err);showToast('OBJ EXPORT FAILED');return false;}
+}
+function makeGLBExportRoot(){
+  const root=new THREE.Group();root.name='MA_3D';
+  const groupNodes=new Map(),geometries=[];
+  // Temporary exporter material only. It is stripped from the final GLB JSON,
+  // so the delivered file contains geometry/nodes but no MA display material.
+  const temporaryMaterial=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0});
+  for(const m of liveExportMasses()){
+    const geometry=exportGeometryWorldClone(m);geometries.push(geometry);
+    const mesh=new THREE.Mesh(geometry,temporaryMaterial);
+    mesh.name=modelExportObjectName(m);
+    mesh.userData={maId:m.id,maType:m.type||'mass'};
+    if(m.groupId!=null){
+      let parent=groupNodes.get(m.groupId);
+      if(!parent){parent=new THREE.Group();parent.name=`GROUP_${m.groupId}`;parent.userData={maGroupId:m.groupId};groupNodes.set(m.groupId,parent);root.add(parent);}
+      parent.add(mesh);
+    }else root.add(mesh);
+  }
+  return{root,dispose(){for(const g of geometries)g.dispose();temporaryMaterial.dispose();}};
+}
+function stripMaterialsFromGLB(buffer){
+  try{
+    const src=buffer instanceof ArrayBuffer?buffer:buffer.buffer;
+    const dv=new DataView(src);
+    if(dv.byteLength<20||dv.getUint32(0,true)!==0x46546c67||dv.getUint32(4,true)!==2)return src;
+    const declared=Math.min(dv.getUint32(8,true),dv.byteLength),chunks=[];
+    let off=12;
+    while(off+8<=declared){
+      const len=dv.getUint32(off,true),type=dv.getUint32(off+4,true),start=off+8,end=start+len;
+      if(end>declared)break;
+      chunks.push({type,data:new Uint8Array(src.slice(start,end))});
+      off=end;
+    }
+    const jsonChunk=chunks.find(c=>c.type===0x4e4f534a);if(!jsonChunk)return src;
+    const raw=new TextDecoder().decode(jsonChunk.data).replace(/[\u0000 ]+$/g,'');
+    const json=JSON.parse(raw);
+    delete json.materials;
+    if(Array.isArray(json.meshes))for(const mesh of json.meshes)if(Array.isArray(mesh.primitives))for(const primitive of mesh.primitives)delete primitive.material;
+    // No texture-bearing MA materials exist, but remove any exporter-only empty
+    // material infrastructure if it ever appears with the temporary material.
+    if(!json.materials){delete json.textures;delete json.images;delete json.samplers;}
+    const encoded=new TextEncoder().encode(JSON.stringify(json));
+    const paddedLength=(encoded.length+3)&~3;
+    const padded=new Uint8Array(paddedLength);padded.fill(0x20);padded.set(encoded);
+    jsonChunk.data=padded;
+    const total=12+chunks.reduce((sum,c)=>sum+8+c.data.byteLength,0);
+    const out=new ArrayBuffer(total),outView=new DataView(out),outBytes=new Uint8Array(out);
+    outView.setUint32(0,0x46546c67,true);outView.setUint32(4,2,true);outView.setUint32(8,total,true);
+    let dst=12;
+    for(const c of chunks){outView.setUint32(dst,c.data.byteLength,true);outView.setUint32(dst+4,c.type,true);outBytes.set(c.data,dst+8);dst+=8+c.data.byteLength;}
+    return out;
+  }catch(err){console.warn('GLB material strip failed; using exporter output',err);return buffer;}
+}
+async function exportCurrentGLB(){
+  if(!liveExportMasses().length){showToast('NO GEOMETRY TO EXPORT');return false;}
+  const job=makeGLBExportRoot();
+  try{
+    const exporter=new GLTFExporter();
+    const raw=await new Promise((resolve,reject)=>exporter.parse(job.root,resolve,reject,{binary:true,onlyVisible:true,trs:false}));
+    const buffer=stripMaterialsFromGLB(raw);
+    const name=`${modelExportBaseName()}.glb`;
+    const file=new File([buffer],name,{type:'model/gltf-binary'});
+    const delivered=await deliverExportFile(file,'MA 3D · GLB');
+    if(delivered)showToast('GLB EXPORTED');
+    return delivered;
+  }catch(err){console.warn('GLB export failed',err);showToast('GLB EXPORT FAILED');return false;}
+  finally{job.dispose();}
 }
 
 // v7.99 — PSD export stays a genuine layered Photoshop document and now
@@ -6114,8 +6284,8 @@ const EXPORT_DOCK_ACTIONS=[
   [PRIMARY_MIDDLE_SLOT_IDS[0],'viewPsd'],
   [PRIMARY_MIDDLE_SLOT_IDS[1],'scenesPng'],
   [PRIMARY_MIDDLE_SLOT_IDS[2],'scenesPsd'],
-  [PRIMARY_MIDDLE_SLOT_IDS[3],null],
-  ['lookJoystick',null]
+  [PRIMARY_MIDDLE_SLOT_IDS[3],'obj'],
+  ['lookJoystick','glb']
 ];
 function syncExportDockVisuals(){
   const view=document.getElementById('viewJoystick');
@@ -6125,7 +6295,7 @@ function syncExportDockVisuals(){
   look?.classList.toggle('exportDockMode',!!exportDockOpen);
   modeBar?.classList.toggle('exportDockMode',!!exportDockOpen);
   if(view){if(exportDockOpen)view.dataset.exportLabel='VIEW PNG';else delete view.dataset.exportLabel;}
-  if(look){if(exportDockOpen)look.dataset.exportLabel='';else delete look.dataset.exportLabel;}
+  if(look){if(exportDockOpen)look.dataset.exportLabel='GLB';else delete look.dataset.exportLabel;}
 }
 function setExportDockOpen(open){
   exportDockOpen=!!open;
@@ -6278,7 +6448,7 @@ function syncPrimaryDockUI(){
     setPrimaryDockButtonVisual(slot2,viewPsdLabel,{active:!!pendingViewPsdFile});
     setPrimaryDockButtonVisual(slot3,'SCN PNG');
     setPrimaryDockButtonVisual(slot4,scenePsdLabel,{active:!!pendingScenePsdFiles.length});
-    setPrimaryDockButtonVisual(slot5,'');
+    setPrimaryDockButtonVisual(slot5,'OBJ');
     syncExportDockVisuals();
     return;
   }
@@ -6328,7 +6498,7 @@ function syncPrimaryDockUI(){
     setPrimaryDockButtonVisual(b3,'DUP');
     // In iPad Pencil mode SELECT is a Single/Multi mode toggle, not an active
     // modelling tool. Multi is shown by the dedicated grey state below.
-    setPrimaryDockButtonVisual(b4,'SELECT',{active:!(MA_IS_IPAD&&ipadPencilMode)});
+    setPrimaryDockButtonVisual(b4,'SELECT',{active:!(MA_IS_IPHONE||(MA_IS_IPAD&&ipadPencilMode))});
     return;
   }
 
@@ -6391,6 +6561,7 @@ function updateMobileDrawUI(){
     'active',
     canSelect&&
     dockMode==='base'&&
+    !MA_IS_IPHONE&&
     !(MA_IS_IPAD&&ipadPencilMode)&&
     (selectModeActive||selectModeHeld||desktopSelectArmed||desktopWindowSelectArmed)
   );
@@ -6398,6 +6569,10 @@ function updateMobileDrawUI(){
     'pencilMultiSelect',
     !!(MA_IS_IPAD&&ipadPencilMode&&ipadPencilMultiSelect&&canSelect&&(dockMode==='base'||dockMode==='select'))
   );
+  const iphoneSelectVisual=!!(MA_IS_IPHONE&&canSelect&&(dockMode==='base'||dockMode==='select'));
+  selectBtn?.classList.toggle('iphoneSelectPressPreview',iphoneSelectVisual&&iphoneSelectPressPreview);
+  selectBtn?.classList.toggle('iphoneSelectMultiHold',iphoneSelectVisual&&selectModeHeld&&!iphoneSelectPressPreview);
+  selectBtn?.classList.toggle('iphoneSelectSingle',iphoneSelectVisual&&selectModeActive&&!selectModeHeld&&!iphoneSelectPressPreview);
 
   syncPrimaryDockUI();
   syncIPhoneBrushChoiceVisuals();
@@ -9187,7 +9362,9 @@ const shortcutActions=[
   {group:'Output',id:'sharePNG',label:'View PNG',default:'',run:()=>shareCurrentPNG()},
   {group:'Output',id:'exportProcreatePSD',label:'View PSD',default:'',run:()=>exportProcreatePSD()},
   {group:'Output',id:'scenesPNG',label:'Scenes PNG · current mood',default:'',run:()=>exportAllScenesCurrentMoodPNGs()},
-  {group:'Output',id:'scenesPSD',label:'Scenes PSD',default:'',run:()=>exportAllScenesMoodPSDs()}
+  {group:'Output',id:'scenesPSD',label:'Scenes PSD',default:'',run:()=>exportAllScenesMoodPSDs()},
+  {group:'Output',id:'exportOBJ',label:'3D · OBJ',default:'',run:()=>exportCurrentOBJ()},
+  {group:'Output',id:'exportGLB',label:'3D · GLB',default:'',run:()=>exportCurrentGLB()}
 ];
 let shortcutBindings={},shortcutCaptureActionId=null;
 function defaultShortcutBindings(){const o={};for(const a of shortcutActions)o[a.id]=a.default||'';return o;}
@@ -10648,7 +10825,7 @@ function runMAMenuDockAction(action,e){
   }
   if(action==='export'){
     setExportDockOpen(true);
-    showToast('EXPORT · VIEW PNG · VIEW PSD · SCENES PNG · SCENES PSD');
+    showToast('EXPORT · VIEW PNG · VIEW PSD · SCENES PNG · SCENES PSD · OBJ · GLB');
     return;
   }
   if(action==='safe'){
@@ -10708,6 +10885,8 @@ function runExportDockAction(action){
   if(action==='viewPsd'){exportProcreatePSD();return;}
   if(action==='scenesPng'){exportAllScenesCurrentMoodPNGs();return;}
   if(action==='scenesPsd'){exportAllScenesMoodPSDs();return;}
+  if(action==='obj'){exportCurrentOBJ();return;}
+  if(action==='glb'){exportCurrentGLB();return;}
 }
 function installExportDockControl(id,action){
   const el=document.getElementById(id);if(!el)return;
@@ -11286,6 +11465,19 @@ for(const id of IPHONE_DRAW_DOCK_IDS){
   el.addEventListener('pointerdown',e=>chooseDesktopBrushFromDock(id,e),{capture:true,passive:false});
 }
 
+function promoteIPhoneSelectPressToMulti(){
+  const press=selectButtonPress;
+  if(!press?.iphone||!press.startedActive||press.held||!selectModeActive)return false;
+  if(press.timer){clearTimeout(press.timer);press.timer=null;}
+  beginSelectModeHold(press.event);
+  if(!selectModeHeld)return false;
+  press.held=true;
+  iphoneSelectPressPreview=false;
+  updateMobileDrawUI();
+  showToast('MULTI SELECT');
+  return true;
+}
+
 const selectHoldBtn=document.getElementById('selectHoldBtn');
 if(selectHoldBtn){
   selectHoldBtn.addEventListener('pointerdown',e=>{
@@ -11312,6 +11504,50 @@ if(selectHoldBtn){
       activateSelectMode();
       updateMobileDrawUI();
       showToast(ipadPencilMultiSelect?'MULTI SELECT':'SINGLE SELECT');
+      return;
+    }
+
+    // v8.51 — iPhone SELECT is physically dark only while the button is down.
+    // First press enters Single Select immediately; once active, a long hold
+    // temporarily sets selectModeHeld for additive/toggle picking.
+    if(MA_IS_IPHONE&&e.pointerType==='touch'){
+      const selectDockMode=primaryDockMode();
+      if(selectDockMode!=='draw'&&!selectModeAvailable()){
+        iphoneSelectPressPreview=false;
+        updateMobileDrawUI();
+        return;
+      }
+      if(selectButtonPress)return;
+      // Keep the SELECT finger owned by the button. This makes a second finger
+      // on the viewport reliable instead of letting Safari re-route/cancel the hold.
+      try{selectHoldBtn.setPointerCapture?.(e.pointerId);}catch(_){}
+      const press=selectButtonPress={
+        pointerId:e.pointerId,
+        pointerType:e.pointerType,
+        held:false,
+        startedActive:!!selectModeActive,
+        timer:null,
+        event:syntheticHoldEvent(e),
+        iphone:true
+      };
+      if(!press.startedActive){
+        // v8.50 — Select becomes logically active on pointer-down. The button
+        // still previews black until release, but the very first second-finger
+        // pick now works immediately instead of waiting for the button release.
+        iphoneSelectPressPreview=true;
+        activateSelectMode();
+        updateMobileDrawUI();
+      }else{
+        // v8.51 — an already-active SELECT also goes dark immediately on
+        // pointer-down. If the press becomes a Multi hold, the dedicated hold
+        // state stays dark; if it is a short tap, release returns to neutral.
+        iphoneSelectPressPreview=true;
+        updateMobileDrawUI();
+        press.timer=setTimeout(()=>{
+          if(selectButtonPress!==press)return;
+          promoteIPhoneSelectPressToMulti();
+        },IPHONE_SELECT_HOLD_MS);
+      }
       return;
     }
 
@@ -11380,6 +11616,29 @@ if(selectHoldBtn){
 
     if(press.timer)clearTimeout(press.timer);
 
+    if(press.iphone){
+      iphoneSelectPressPreview=false;
+      if(press.held){
+        endSelectModeHold(syntheticHoldEvent(e));
+        // Multi Select is temporary on iPhone; releasing returns to latched
+        // neutral Single Select regardless of how many objects are selected.
+        if(!selectModeActive)activateSelectMode();
+        showToast('SINGLE SELECT');
+      }else if(!press.startedActive){
+        if(!selectModeActive)activateSelectMode();
+        showToast('SELECT');
+      }else{
+        // v8.50 — a short tap on active SELECT exits Select mode again.
+        // A long hold is still reserved for temporary Multi Select and therefore
+        // returns to latched Single Select when released.
+        deactivateSelectMode(true);
+        showToast('SELECT OFF');
+      }
+      selectButtonPress=null;
+      updateMobileDrawUI();
+      return;
+    }
+
     if(!press.held){
       if(press.pointerType==='touch'){
         // A touch tap must never latch SELECT and allow a later canvas tap.
@@ -11425,6 +11684,17 @@ if(selectHoldBtn){
     const press=selectButtonPress;
     if(!press||press.pointerId!==e.pointerId)return;
     if(press.timer)clearTimeout(press.timer);
+    if(press.iphone){
+      iphoneSelectPressPreview=false;
+      if(press.held&&selectModeHeld)endSelectModeHold(syntheticHoldEvent(e));
+      // v8.50 — the first press activates Select on pointer-down, so a Safari
+      // cancellation must not throw that activation away. Active Select stays
+      // neutral; a cancelled Multi hold simply returns to Single Select.
+      if(!press.startedActive&&!selectModeActive)activateSelectMode();
+      selectButtonPress=null;
+      updateMobileDrawUI();
+      return;
+    }
     if(press.held&&press.pointerType==='touch'&&selectModeHeld){
       // In iPad Pencil mode, Pencil contact may cancel the finger PointerEvent
       // even though the user is still holding SELECT. Preserve the temporary
@@ -12468,6 +12738,13 @@ renderer.domElement.addEventListener('pointerdown',e=>{
 
     if(e.pointerType==='touch'){
       e.preventDefault();
+
+      // v8.50 — if SELECT is already active and its button is currently being
+      // held, the first viewport contact immediately promotes that press to
+      // Multi Select. The user never has to wait out the hold timer or tap twice.
+      if(MA_IS_IPHONE&&selectButtonPress?.iphone&&selectButtonPress.startedActive&&!selectButtonPress.held){
+        promoteIPhoneSelectPressToMulti();
+      }
 
       // v8.46 — Pencil mode is strict: fingers are ALWAYS navigation input,
       // including while SELECT is held. Multi-select is performed only by Pencil.
