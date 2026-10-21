@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.67">
+<meta name="ma-build" content="8.70">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.67</title>
+<title>MA 3D · v8.70</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.67';
+  const CURRENT_BUILD = '8.70';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -1858,29 +1858,60 @@ html.ma-ipad #mainMenuButton{
 html.ma-ipad #mainMenuButton.dockMenuDragging{cursor:grabbing;}
 
 /* iPhone is intentionally fixed in both orientations. */
-/* v8.67 — iPhone portrait uses the real standalone screen height as its
-   workspace source of truth. iOS can report a layout viewport that stops above
-   the home-indicator area even with viewport-fit=cover; using the physical CSS
-   screen height in standalone mode prevents #app/#viewport from ending early. */
-html.ma-iphone:not(.ma-iphone-landscape) #app{
-  top:0 !important;
+/* v8.70 — iPhone standalone portrait: one height source of truth.
+   WebKit standalone + viewport-fit=cover can report 100%/dvh/fixed-inset
+   heights minus the bottom safe-area. In standalone portrait, 100vh is the
+   physical app viewport including the home-indicator area, so size the shell
+   explicitly from it instead of extending a shorter box with offsets. */
+html.ma-iphone:not(.ma-iphone-landscape),
+html.ma-iphone:not(.ma-iphone-landscape) body{
+  overflow:hidden !important;
+}
+
+/* File/browser previews keep their host-provided viewport. */
+html.ma-iphone:not(.ma-standalone):not(.ma-iphone-landscape) #app{
+  position:fixed !important;
+  inset:0 !important;
+  width:auto !important;
+  height:auto !important;
+  overflow:hidden !important;
+}
+
+/* Installed MA app: 100vh deliberately replaces 100%, dvh and inset-bottom. */
+html.ma-iphone.ma-standalone:not(.ma-iphone-landscape),
+html.ma-iphone.ma-standalone:not(.ma-iphone-landscape) body{
+  width:100vw !important;
+  height:100vh !important;
+  min-height:100vh !important;
+  max-height:100vh !important;
+}
+html.ma-iphone.ma-standalone:not(.ma-iphone-landscape) #app{
+  position:fixed !important;
   left:0 !important;
-  right:0 !important;
+  top:0 !important;
+  right:auto !important;
   bottom:auto !important;
-  width:100% !important;
-  height:var(--ma-iphone-full-h,100dvh) !important;
-  min-height:var(--ma-iphone-full-h,100dvh) !important;
+  width:100vw !important;
+  height:100vh !important;
+  min-height:100vh !important;
+  max-height:100vh !important;
+  overflow:hidden !important;
 }
 html.ma-iphone:not(.ma-iphone-landscape) #viewport{
   position:absolute !important;
   left:0 !important;
-  right:0 !important;
   top:0 !important;
-  bottom:0 !important;
+  right:auto !important;
+  bottom:auto !important;
   width:100% !important;
   height:100% !important;
+  max-width:none !important;
+  max-height:none !important;
+  overflow:hidden !important;
 }
 html.ma-iphone:not(.ma-iphone-landscape) #viewport > canvas{
+  position:absolute !important;
+  inset:0 !important;
   width:100% !important;
   height:100% !important;
 }
@@ -1889,9 +1920,8 @@ html.ma-iphone:not(.ma-iphone-landscape) #maBottomDock{
   left:calc(50% - (var(--ma-dock-length) / 2)) !important;
   right:auto !important;
   top:auto !important;
-  /* Overlay only: do not reserve workspace. Keep a modest gap above the
-     home indicator while allowing the canvas to continue behind it. */
-  bottom:max(10px,calc(env(safe-area-inset-bottom) - 16px)) !important;
+  /* Keep controls comfortably above the home indicator; the canvas continues behind. */
+  bottom:calc(env(safe-area-inset-bottom) + 6px) !important;
   transform:none !important;
 }
 html.ma-iphone:not(.ma-iphone-landscape) #mainMenuButton{
@@ -2244,27 +2274,13 @@ window.__maReadIPhoneLayout=function __maReadIPhoneLayout(){
   if(!__maIsIPhone)return null;
   const app=document.getElementById('app');
   const de=document.documentElement;
-  const vv=window.visualViewport;
-  const mq=window.matchMedia?.('(orientation: landscape)');
-  const provisionalW=Math.max(1,Math.round(de.clientWidth||window.innerWidth||1));
-  const provisionalH=Math.max(1,Math.round(de.clientHeight||window.innerHeight||1));
-  const landscape=(mq&&typeof mq.matches==='boolean')?mq.matches:(provisionalW>provisionalH);
-
-  // In an installed iPhone app, screen.height is the physical CSS-pixel screen
-  // height and includes the home-indicator region. The layout/visual viewport can
-  // be shorter in portrait, which previously clipped MA above the screen bottom.
-  const visibleH=Math.max(
-    provisionalH,
-    Math.round((vv?.height||0)+(vv?.offsetTop||0))
-  );
-  const physicalPortraitH=(!landscape&&__maStandalone&&Number.isFinite(+screen?.height))
-    ?Math.round(+screen.height):0;
-  const targetH=Math.max(1,visibleH,physicalPortraitH);
-  de.style.setProperty('--ma-iphone-full-h',`${targetH}px`);
-
   const r=app?.getBoundingClientRect();
-  const w=Math.max(1,Math.round(r?.width||provisionalW));
-  const h=Math.max(1,Math.round(r?.height||targetH));
+  const fallbackW=de.clientWidth||window.innerWidth||1;
+  const fallbackH=de.clientHeight||window.innerHeight||1;
+  const w=Math.max(1,Math.round(r?.width||fallbackW));
+  const h=Math.max(1,Math.round(r?.height||fallbackH));
+  const mq=window.matchMedia?.('(orientation: landscape)');
+  const landscape=(mq&&typeof mq.matches==='boolean')?mq.matches:(w>h);
   const state={w,h,landscape:!!landscape};
   de.classList.toggle('ma-iphone-landscape',state.landscape);
   window.__MA_IPHONE_VIEWPORT__=state;
