@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.58">
+<meta name="ma-build" content="8.62">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.58</title>
+<title>MA 3D · v8.62</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.58';
+  const CURRENT_BUILD = '8.62';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -4393,10 +4393,55 @@ function unionGeometry(baseGeometry,addGeometry){
 function commitMassBoolean(m,baseGeometry,cutter,operation='subtract'){
   let next=null;try{next=operation==='union'?unionGeometry(baseGeometry,cutter):subtractGeometry(baseGeometry,cutter);if(!setMassGeometry(m,next,true)){next.dispose();return false;}return true;}catch(err){console.warn('Mass boolean failed',err);next?.dispose();return false;}
 }
-function geometryFromPositions(arr){
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(arr,3));g.computeVertexNormals();g.computeBoundingBox();g.computeBoundingSphere();return g;
+function geometryFromPositions(arr,normals=null){
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(arr,3));
+  if(Array.isArray(normals)&&normals.length===arr.length)g.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
+  else g.computeVertexNormals();
+  g.computeBoundingBox();g.computeBoundingSphere();return g;
 }
 function serializeGeometry(g){return Array.from(g.attributes.position.array);}
+function serializeGeometryNormals(g){const n=g?.attributes?.normal;return n?Array.from(n.array):null;}
+
+// v8.62 — Library/history must preserve Round Brush shading without rebuilding topology.
+// New saves store the authored smooth normals verbatim. Older projects do not have them,
+// so reconstruct crease-aware normals IN PLACE on the existing triangle soup: positions,
+// triangle order and manifold source geometry remain byte-for-byte untouched.
+function restoreRoundBrushNormalsInPlace(g,serializedNormals=null,creaseDeg=58){
+  const pos=g?.attributes?.position;if(!pos)return false;
+  if(Array.isArray(serializedNormals)&&serializedNormals.length===pos.array.length){
+    g.setAttribute('normal',new THREE.Float32BufferAttribute(serializedNormals,3));
+    g.attributes.normal.needsUpdate=true;
+    return true;
+  }
+  const count=pos.count;
+  if(count<3||count%3!==0){g.computeVertexNormals();return false;}
+  const faceCount=count/3,faceNormals=new Array(faceCount),atPosition=new Map();
+  const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3(),ab=new THREE.Vector3(),ac=new THREE.Vector3();
+  const keyFor=i=>`${pos.getX(i)},${pos.getY(i)},${pos.getZ(i)}`;
+  for(let f=0;f<faceCount;f++){
+    const i=f*3;
+    a.fromBufferAttribute(pos,i);b.fromBufferAttribute(pos,i+1);c.fromBufferAttribute(pos,i+2);
+    ab.subVectors(b,a);ac.subVectors(c,a);
+    const n=new THREE.Vector3().crossVectors(ab,ac);
+    if(n.lengthSq()>1e-20)n.normalize();else n.set(0,1,0);
+    faceNormals[f]=n;
+    for(let j=0;j<3;j++){
+      const vi=i+j,k=keyFor(vi);let list=atPosition.get(k);if(!list){list=[];atPosition.set(k,list);}list.push(f);
+    }
+  }
+  const cosCrease=Math.cos(THREE.MathUtils.degToRad(creaseDeg));
+  const out=new Float32Array(count*3),sum=new THREE.Vector3();
+  for(let i=0;i<count;i++){
+    const own=faceNormals[Math.floor(i/3)],faces=atPosition.get(keyFor(i))||[];sum.set(0,0,0);
+    for(const f of faces){const n=faceNormals[f];if(own.dot(n)>=cosCrease)sum.add(n);}
+    if(sum.lengthSq()<1e-20)sum.copy(own);else sum.normalize();
+    out[i*3]=sum.x;out[i*3+1]=sum.y;out[i*3+2]=sum.z;
+  }
+  g.setAttribute('normal',new THREE.BufferAttribute(out,3));
+  g.attributes.normal.needsUpdate=true;
+  return true;
+}
 function invalidateMassGeometryDerivedState(m,{invalidateManifold=false}={}){
   if(!m)return;
   // A Manifold cache survives a replacement only when it belongs to that new
@@ -4499,16 +4544,17 @@ function smoothGeometryForType(g,type){
   if(!g)return g;
 
   if(type==='curve'){
-    // Curve brush is an organic solid: weld the real boolean topology first,
-    // then compute one continuous normal field. No triangle-boundary seams.
+    // v8.60 — Round Brush is a true swept tube with hemispherical end caps.
+    // Weld the exported triangle soup, then smooth the cylinder/caps while preserving
+    // only genuinely sharp bends in the authored stroke geometry.
     const manifoldData=g.userData?.manifoldMesh;
     let welded=weldGeometryByPosition(g);
     if(welded!==g)g.dispose();
-    if(manifoldData)welded.userData.manifoldMesh=manifoldData;
-    welded.computeVertexNormals();
-    welded.computeBoundingBox();
-    welded.computeBoundingSphere();
-    return welded;
+    const sm=BufferGeometryUtils.toCreasedNormals(welded,THREE.MathUtils.degToRad(58));
+    if(sm!==welded)welded.dispose();
+    if(manifoldData)sm.userData.manifoldMesh=manifoldData;
+    sm.computeBoundingBox();sm.computeBoundingSphere();
+    return sm;
   }
 
   g=cleanupBrushGeometry(g,type);
@@ -4540,15 +4586,30 @@ function outlineGeometryForMass(g,type){
 function materialForMass(type='draw'){return new THREE.MeshLambertMaterial({color:fill,flatShading:!(type==='sphere'||type==='circle'||type==='curve'),side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});}
 // v8.31 — selection is a simple material tint; geometry remains the source of truth.
 function geometryFromMassData(data,profile,cuts){
-  const direct=Array.isArray(data.geometryPositions)&&data.geometryPositions.length>=9?data.geometryPositions:null,legacyBaked=Array.isArray(data.bakedPositions)&&data.bakedPositions.length>=9, baked=typeof data.baked==='boolean'?data.baked:legacyBaked;
-  if(direct)return{geometry:geometryFromPositions(direct),baked};
-  if(legacyBaked)return{geometry:geometryFromPositions(data.bakedPositions),baked:true};
-  return{geometry:buildMassGeometry(profile,data.depth,cuts),baked};
+  const direct=Array.isArray(data.geometryPositions)&&data.geometryPositions.length>=9?data.geometryPositions:null;
+  const legacyBaked=Array.isArray(data.bakedPositions)&&data.bakedPositions.length>=9;
+  const baked=typeof data.baked==='boolean'?data.baked:legacyBaked;
+  // Serialized triangle positions are already the authoritative final geometry.
+  // Mark them exact so Library / Undo restore never runs a second topology cleanup
+  // over the saved solid. Re-processing an already welded Round Brush was the
+  // source of the "only fragments remain after Library" regression.
+  if(direct)return{geometry:geometryFromPositions(direct,data.geometryNormals),baked,exactSerialized:true};
+  if(legacyBaked)return{geometry:geometryFromPositions(data.bakedPositions,data.geometryNormals),baked:true,exactSerialized:true};
+  return{geometry:buildMassGeometry(profile,data.depth,cuts),baked,exactSerialized:false};
 }
 function makeMass(data,addHistory=false){
   const profile=cleanProfile((data.profile||[]).map(p=>vec2(p.x,p.y))),cuts=(data.cuts||[]).map(normalizeCut),source=geometryFromMassData(data,profile,cuts),baked=source.baked;
   let g=source.geometry;if(!g)return null;
-  const massType=data.type||'draw';g=smoothGeometryForType(g,massType);
+  const massType=data.type||'draw';
+  // Runtime-created baked primitives still get their one intended smoothing pass.
+  // Loaded/snapshotted geometry is used byte-for-byte as topology source of truth.
+  if(!source.exactSerialized||data.__runtimeCreate)g=smoothGeometryForType(g,massType);
+  else if(massType==='curve'){
+    // Do not re-weld/re-topologize a saved Round Brush. Restore only its shading.
+    // New files use the exact saved normals; legacy files get an in-place creased fallback.
+    restoreRoundBrushNormalsInPlace(g,data.geometryNormals,58);
+    g.computeBoundingBox();g.computeBoundingSphere();
+  }else{g.computeVertexNormals();g.computeBoundingBox();g.computeBoundingSphere();}
   const group=new THREE.Group(),mesh=new THREE.Mesh(g,materialForMass(massType));mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);scene.add(group);
   group.position.fromArray(data.position||[0,0,0]);group.quaternion.fromArray(data.quaternion||[0,0,0,1]);group.scale.fromArray(data.scale||[1,1,1]);
   const id=data.id??nextId++;nextId=Math.max(nextId,id+1);group.userData.massId=id;mesh.userData.massId=id;
@@ -4579,7 +4640,7 @@ function getActiveBrushContainer(tool=null){
   return m;
 }
 
-function serializeMass(m){const geometryPositions=serializeGeometry(m.mesh.geometry);return{id:m.id,name:m.name,type:m.type,groupId:m.groupId??null,profile:m.profile.map(p=>({x:p.x,y:p.y})),depth:m.depth,cuts:m.baked?[]:(m.cuts||[]).map(serializeCut),baked:!!m.baked,geometryPositions:m.baked?null:geometryPositions,bakedPositions:m.baked?geometryPositions:null,position:m.group.position.toArray(),quaternion:m.group.quaternion.toArray(),scale:m.group.scale.toArray()};}
+function serializeMass(m){const geometryPositions=serializeGeometry(m.mesh.geometry),geometryNormals=m.type==='curve'?serializeGeometryNormals(m.mesh.geometry):null;return{id:m.id,name:m.name,type:m.type,groupId:m.groupId??null,profile:m.profile.map(p=>({x:p.x,y:p.y})),depth:m.depth,cuts:m.baked?[]:(m.cuts||[]).map(serializeCut),baked:!!m.baked,geometryPositions:m.baked?null:geometryPositions,bakedPositions:m.baked?geometryPositions:null,geometryNormals,position:m.group.position.toArray(),quaternion:m.group.quaternion.toArray(),scale:m.group.scale.toArray()};}
 function snapshot(){return masses.map(m=>({...serializeMass(m),baked:!!m.baked,geometryPositions:serializeGeometry(m.mesh.geometry)}));}
 function captureSceneView(){
   // A scene is a complete shot snapshot, not only a camera bookmark. Persist the
@@ -7110,7 +7171,7 @@ function endSphereDraw(){
     try{if(commitMassBoolean(host,host.mesh.geometry,g)){selectMass(host);recordHistory();}}finally{g.dispose();}
     return;
   }
-  const data={type:'sphere',profile:[],depth:brushSize(),bakedPositions:serializeGeometry(g),position:d.center.toArray(),quaternion:q.toArray(),scale:[1,1,1]};g.dispose();const m=makeMass(data,false);if(m){selectMass(m);recordHistory();}
+  const data={type:'sphere',profile:[],depth:brushSize(),bakedPositions:serializeGeometry(g),__runtimeCreate:true,position:d.center.toArray(),quaternion:q.toArray(),scale:[1,1,1]};g.dispose();const m=makeMass(data,false);if(m){selectMass(m);recordHistory();}
 }
 
 // --- Draw tools ----------------------------------------------------------------
@@ -7521,7 +7582,10 @@ function updateBrushStrokePreview(st){
 
   if(g){
     g.applyMatrix4(matWorld);
-    g.computeVertexNormals();
+    // Round Brush geometry already carries smooth shared-vertex normals from the
+    // tube builder. Recomputing normals after toNonIndexed() would make the live
+    // preview look faceted again. Other draw geometries keep the old behavior.
+    if(st.tool==='boxbrush'||!g.getAttribute('normal'))g.computeVertexNormals();
     const fillMat=new THREE.MeshPhongMaterial({
       color:st.eraseMode?0x777777:0xffffff,
       emissive:st.eraseMode?0x000000:0x111111,
@@ -7534,16 +7598,11 @@ function updateBrushStrokePreview(st){
     previewFill.renderOrder=1950;
     scene.add(previewFill);
 
-    const eg=new THREE.EdgesGeometry(g,22);
-    const lineMat=new THREE.LineBasicMaterial({
-      color:outline,
-      transparent:true,
-      opacity:.96,
-      depthTest:false
-    });
-    previewLine=new THREE.LineSegments(eg,lineMat);
-    previewLine.renderOrder=2050;
-    scene.add(previewLine);
+    // v8.61 — Round/Square Brush previews are surface-only. Internal tube/box
+    // tessellation is implementation geometry and should never read as modeling
+    // edges while drawing. Final committed masses still use the canonical outline
+    // system, so this affects preview visuals only.
+    previewLine=null;
     return;
   }
 
@@ -7594,66 +7653,147 @@ function brushProfileAt(t,samples,defaultWidth,defaultDepth){
     depth:THREE.MathUtils.lerp(a.depth??fallback.depth,b.depth??fallback.depth,f)
   };
 }
+// v8.60 — Round Brush is a real swept cylinder/tube again, but intentionally light.
+// The centreline is simplified before meshing; the tube uses a modest radial count,
+// and both ends are closed with true hemispherical/ellipsoidal caps integrated into
+// the same manifold surface. This keeps the sculptural "hose" feel without the very
+// dense topology of the old implementation.
+function roundBrushCenterline(points,baseDiameter){
+  const input=[];
+  for(const p of points||[]){
+    const q=p?.isVector3?p.clone():new THREE.Vector3(p?.x||0,p?.y||0,p?.z||0);
+    if(!input.length||q.distanceToSquared(input[input.length-1])>1e-10)input.push(q);
+  }
+  if(input.length<2)return input;
+
+  let length=0;for(let i=1;i<input.length;i++)length+=input[i].distanceTo(input[i-1]);
+  if(length<1e-6)return[input[0]];
+
+  // Remove micro-jitter before we build any tube rings. The tolerance scales with
+  // brush diameter, so a large Round Brush does not carry hundreds of tiny bends.
+  const epsilon=Math.max(.0015,Math.min(baseDiameter*.045,length*.01));
+  let reduced=rdp(input,epsilon);
+  if(reduced.length<2)reduced=[input[0].clone(),input[input.length-1].clone()];
+
+  let reducedLength=0;for(let i=1;i<reduced.length;i++)reducedLength+=reduced[i].distanceTo(reduced[i-1]);
+  const spacing=Math.max(.022,baseDiameter*.34,reducedLength/56);
+  const segments=Math.max(1,Math.min(56,Math.ceil(reducedLength/spacing)));
+  if(reduced.length===2){
+    const a=reduced[0],b=reduced[1];
+    return Array.from({length:segments+1},(_,i)=>a.clone().lerp(b,i/segments));
+  }
+
+  const curve=new THREE.CatmullRomCurve3(reduced,false,'centripetal');
+  return Array.from({length:segments+1},(_,i)=>curve.getPointAt(i/segments));
+}
 function createCurveStrokeGeometry(points,brushSize,sign=1,brushSamples=null,depthSize=brushSize){
   if(!points||!points.length)return null;
-  const pts=points.map(p=>p?.isVector3?p.clone():new THREE.Vector3(p.x,p.y,p.z||0));
+  const centre=roundBrushCenterline(points,Math.max(.05,brushSize));
   const firstProfile=brushProfileAt(0,brushSamples,brushSize,depthSize);
-  if(pts.length===1){
-    const g=new THREE.SphereGeometry(1,48,28);
-    g.scale(Math.max(.03,firstProfile.width*.5),Math.max(.03,firstProfile.width*.5),Math.max(.03,firstProfile.depth*.5));
-    g.computeVertexNormals();g.computeBoundingBox();g.computeBoundingSphere();delete g.userData.manifoldMesh;return g;
-  }
-  let length=0;for(let i=1;i<pts.length;i++)length+=pts[i].distanceTo(pts[i-1]);
-  if(length<1e-4){
-    const g=new THREE.SphereGeometry(1,48,28);
-    g.scale(Math.max(.03,firstProfile.width*.5),Math.max(.03,firstProfile.width*.5),Math.max(.03,firstProfile.depth*.5));
-    g.computeVertexNormals();g.computeBoundingBox();g.computeBoundingSphere();delete g.userData.manifoldMesh;return g;
+
+  // A dot is the degenerate Round Brush stroke: one compact sphere/ellipsoid.
+  if(centre.length<2){
+    const g=new THREE.SphereGeometry(1,16,10);
+    g.scale(
+      Math.max(.03,firstProfile.width*.5),
+      Math.max(.03,firstProfile.width*.5),
+      Math.max(.03,firstProfile.depth*.5)
+    );
+    g.computeVertexNormals();g.computeBoundingBox();g.computeBoundingSphere();delete g.userData.manifoldMesh;
+    return g.toNonIndexed();
   }
 
-  const curve=new THREE.CatmullRomCurve3(pts,false,'centripetal');
-  const avgSize=Math.max(.03,(brushSize+depthSize)*.25);
-  const tubularSegments=Math.max(18,Math.min(220,Math.ceil(length/Math.max(avgSize*.3,.018))*2));
-  const radialSegments=24;
-  const positions=[],indices=[];
+  // Rebuild one smooth curve from the cleaned centreline. The number of longitudinal
+  // rings is bounded by roundBrushCenterline(), so topology stays predictable.
+  const curve=new THREE.CatmullRomCurve3(centre,false,'centripetal');
+  const tubularSegments=Math.max(1,centre.length-1);
+  const radialSegments=14;
+  const capSegments=5;
   const frames=curve.computeFrenetFrames(tubularSegments,false);
+  const positions=[],indices=[];
 
-  for(let i=0;i<=tubularSegments;i++){
-    const t=i/tubularSegments,c=curve.getPointAt(t);
-    const normal=frames.normals[i],binormal=frames.binormals[i];
-    const profile=brushProfileAt(t,brushSamples,brushSize,depthSize);
-    const rw=Math.max(.03,profile.width*.5),rd=Math.max(.03,profile.depth*.5);
+  const addRing=(center,normal,binormal,rw,rd,scale=1)=>{
+    const base=positions.length/3;
     for(let j=0;j<radialSegments;j++){
       const a=j/radialSegments*Math.PI*2,ca=Math.cos(a),sa=Math.sin(a);
       positions.push(
-        c.x+normal.x*ca*rw+binormal.x*sa*rd,
-        c.y+normal.y*ca*rw+binormal.y*sa*rd,
-        c.z+normal.z*ca*rw+binormal.z*sa*rd
+        center.x+normal.x*ca*rw*scale+binormal.x*sa*rd*scale,
+        center.y+normal.y*ca*rw*scale+binormal.y*sa*rd*scale,
+        center.z+normal.z*ca*rw*scale+binormal.z*sa*rd*scale
       );
     }
+    return base;
+  };
+  const connectRings=(a0,b0,reverse=false)=>{
+    for(let j=0;j<radialSegments;j++){
+      const k=(j+1)%radialSegments;
+      const a=a0+j,d=a0+k,b=b0+j,c=b0+k;
+      if(reverse)indices.push(a,b,d,b,c,d);
+      else indices.push(a,d,b,b,d,c);
+    }
+  };
+
+  // Main cylindrical/tubular body.
+  const bodyRings=[];
+  let startShape=null,endShape=null;
+  for(let i=0;i<=tubularSegments;i++){
+    const t=i/tubularSegments,c=curve.getPointAt(t);
+    const profile=brushProfileAt(t,brushSamples,brushSize,depthSize);
+    const rw=Math.max(.03,profile.width*.5),rd=Math.max(.03,profile.depth*.5);
+    const base=addRing(c,frames.normals[i],frames.binormals[i],rw,rd,1);
+    bodyRings.push(base);
+    if(i===0)startShape={c:c.clone(),tangent:frames.tangents[i].clone().normalize(),normal:frames.normals[i].clone(),binormal:frames.binormals[i].clone(),rw,rd};
+    if(i===tubularSegments)endShape={c:c.clone(),tangent:frames.tangents[i].clone().normalize(),normal:frames.normals[i].clone(),binormal:frames.binormals[i].clone(),rw,rd};
+    if(i>0)connectRings(bodyRings[i-1],base,false);
   }
 
-  for(let i=0;i<tubularSegments;i++){
-    const r0=i*radialSegments,r1=(i+1)*radialSegments;
+  // START hemisphere. The first tube ring is the equator; successive rings shrink
+  // while moving backwards along the tangent until they reach one spherical pole.
+  let prev=startShape?bodyRings[0]:null;
+  if(startShape){
+    const axialRadius=(startShape.rw+startShape.rd)*.5;
+    for(let s=1;s<capSegments;s++){
+      const alpha=(s/capSegments)*(Math.PI*.5);
+      const cc=startShape.c.clone().addScaledVector(startShape.tangent,-axialRadius*Math.sin(alpha));
+      const ring=addRing(cc,startShape.normal,startShape.binormal,startShape.rw,startShape.rd,Math.cos(alpha));
+      connectRings(prev,ring,true);
+      prev=ring;
+    }
+    const polePos=startShape.c.clone().addScaledVector(startShape.tangent,-axialRadius);
+    const pole=positions.length/3;positions.push(polePos.x,polePos.y,polePos.z);
     for(let j=0;j<radialSegments;j++){
-      const k=(j+1)%radialSegments,a=r0+j,b=r1+j,c=r1+k,d=r0+k;
-      indices.push(a,d,b,b,d,c);
+      const k=(j+1)%radialSegments;
+      indices.push(prev+j,pole,prev+k);
     }
   }
 
-  const startCenter=positions.length/3,sp=curve.getPointAt(0);positions.push(sp.x,sp.y,sp.z);
-  const endCenter=positions.length/3,ep=curve.getPointAt(1);positions.push(ep.x,ep.y,ep.z);
-  const lastRing=tubularSegments*radialSegments;
-  for(let j=0;j<radialSegments;j++){
-    const k=(j+1)%radialSegments;
-    indices.push(startCenter,k,j);
-    indices.push(endCenter,lastRing+j,lastRing+k);
+  // END hemisphere, mirrored forward along the final tangent.
+  prev=endShape?bodyRings[bodyRings.length-1]:null;
+  if(endShape){
+    const axialRadius=(endShape.rw+endShape.rd)*.5;
+    for(let s=1;s<capSegments;s++){
+      const alpha=(s/capSegments)*(Math.PI*.5);
+      const cc=endShape.c.clone().addScaledVector(endShape.tangent,axialRadius*Math.sin(alpha));
+      const ring=addRing(cc,endShape.normal,endShape.binormal,endShape.rw,endShape.rd,Math.cos(alpha));
+      connectRings(prev,ring,false);
+      prev=ring;
+    }
+    const polePos=endShape.c.clone().addScaledVector(endShape.tangent,axialRadius);
+    const pole=positions.length/3;positions.push(polePos.x,polePos.y,polePos.z);
+    for(let j=0;j<radialSegments;j++){
+      const k=(j+1)%radialSegments;
+      indices.push(prev+j,prev+k,pole);
+    }
   }
 
   const indexed=new THREE.BufferGeometry();
   indexed.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-  indexed.setIndex(indices);indexed.computeVertexNormals();
+  indexed.setIndex(indices);
+  // Compute normals while vertices are shared, then preserve those smooth normals
+  // when converting to triangle soup for MA's serialization/manifold pipeline.
+  indexed.computeVertexNormals();
   const g=indexed.toNonIndexed();indexed.dispose();
-  g.computeVertexNormals();g.computeBoundingBox();g.computeBoundingSphere();delete g.userData.manifoldMesh;
+  g.computeBoundingBox();g.computeBoundingSphere();delete g.userData.manifoldMesh;
   return g;
 }
 function createBoxCurveStrokeGeometry(points,brushSize,brushSamples=null,depthSize=brushSize){
@@ -7806,7 +7946,7 @@ function commitCurveStroke(st,points,brushSamples=null){
     const g=st.tool==='boxbrush'?createBoxCurveStrokeGeometry(strokePoints,brushSize(),brushSamples,brushDepth()):createCurveStrokeGeometry(strokePoints,brushSize(),1,brushSamples,brushDepth());
     if(g&&MA_UNIFIED_UI&&st.brushStrokeMode)placeUnifiedBrushOnPlane(g,false);
     if(!g){showToast(st.tool==='boxbrush'?'BOX BRUSH FAILED':'CURVE FAILED');return;}
-    const m=makeMass({type,profile:[{x:0,y:0},{x:1,y:0},{x:1,y:1}],depth:activeDepth,bakedPositions:serializeGeometry(g),position:plane.origin.toArray(),quaternion:q.toArray(),scale:[1,1,1]},false);g.dispose();
+    const m=makeMass({type,profile:[{x:0,y:0},{x:1,y:0},{x:1,y:1}],depth:activeDepth,bakedPositions:serializeGeometry(g),__runtimeCreate:true,position:plane.origin.toArray(),quaternion:q.toArray(),scale:[1,1,1]},false);g.dispose();
     if(m){
       if(MA_UNIFIED_UI)setSelection([]);
       else selectMass(m);
