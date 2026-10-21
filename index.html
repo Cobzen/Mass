@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.52">
+<meta name="ma-build" content="8.55">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.52</title>
+<title>MA 3D · v8.55</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.52';
+  const CURRENT_BUILD = '8.55';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -1455,8 +1455,8 @@ html.ma-unified-ui #shortcutLastInput{
   letter-spacing:.025em !important;
 }
 
-/* Export mode: four export actions occupy the first four physical circles.
-   Slots five and six intentionally remain empty for now. */
+/* Export mode: five export actions occupy the first five physical circles.
+   The sixth circle intentionally remains empty. */
 #viewJoystick.exportDockMode .joyLabel, #lookJoystick.exportDockMode .joyLabel,
 #viewJoystick.exportDockMode .joyKnob, #lookJoystick.exportDockMode .joyKnob{display:none !important;}
 #viewJoystick.exportDockMode::after, #lookJoystick.exportDockMode::after{
@@ -2267,7 +2267,6 @@ document.addEventListener('dragstart',e=>e.preventDefault(),{capture:true});
 import * as THREE from 'three';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
-import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import ManifoldModule from 'https://cdn.jsdelivr.net/npm/manifold-3d@3.5.3/manifold.js';
 import { writePsd } from 'https://cdn.jsdelivr.net/npm/ag-psd@31.0.2/+esm';
 
@@ -3017,9 +3016,10 @@ async function deliverExportFiles(files,title){
   return true;
 }
 
-// v8.52 — clean 3D interchange exports. Both formats are built only from the
-// canonical mass meshes. UI helpers, outlines, selection tint, workplanes,
-// grids, cameras and preview geometry are intentionally excluded.
+// v8.54 — clean OBJ interchange export built only from the canonical mass meshes.
+// Coplanar render triangles dissolve to editable n-gons/quads where topology permits.
+// UI helpers, outlines, selection tint, workplanes, grids, cameras and preview geometry
+// are intentionally excluded.
 function modelExportBaseName(){
   const raw=String(currentProjectName||'MA-3D').trim()||'MA-3D';
   return raw.replace(/[^a-z0-9._-]+/gi,'-').replace(/^-+|-+$/g,'')||'MA-3D';
@@ -3042,36 +3042,149 @@ function exportNumber(v){
   const n=Math.abs(v)<1e-10?0:v;
   return Number(n.toFixed(7)).toString();
 }
+function exportPositionTopologyWorld(m){
+  const world=exportGeometryWorldClone(m);
+  const srcPos=world.getAttribute('position');
+  if(!srcPos||srcPos.count<3){world.dispose();return null;}
+  const positionsOnly=new THREE.BufferGeometry();
+  positionsOnly.setAttribute('position',srcPos.clone());
+  if(world.index)positionsOnly.setIndex(world.index.clone());
+  world.computeBoundingBox();
+  const diag=Math.max(1e-4,world.boundingBox.getSize(new THREE.Vector3()).length());
+  const tolerance=Math.max(1e-7,diag*1e-6);
+  let welded=BufferGeometryUtils.mergeVertices(positionsOnly,tolerance);
+  if(welded!==positionsOnly)positionsOnly.dispose();
+  world.dispose();
+
+  const pos=welded.getAttribute('position'),index=welded.index;
+  const vertices=[];
+  for(let i=0;i<pos.count;i++)vertices.push(new THREE.Vector3(pos.getX(i),pos.getY(i),pos.getZ(i)));
+  const triangles=[];
+  const count=index?index.count:pos.count;
+  const areaEps=Math.max(1e-18,tolerance*tolerance*1e-4);
+  for(let i=0;i+2<count;i+=3){
+    const a=index?index.getX(i):i,b=index?index.getX(i+1):i+1,c=index?index.getX(i+2):i+2;
+    if(a===b||b===c||c===a)continue;
+    const ab=vertices[b].clone().sub(vertices[a]),ac=vertices[c].clone().sub(vertices[a]);
+    const cross=ab.cross(ac),len=cross.length();
+    if(len<=areaEps)continue;
+    const normal=cross.multiplyScalar(1/len);
+    triangles.push({v:[a,b,c],normal,plane:normal.dot(vertices[a])});
+  }
+  welded.dispose();
+  return{vertices,triangles,tolerance};
+}
+function exportEdgeKey(a,b){return a<b?`${a}:${b}`:`${b}:${a}`;}
+function exportRemoveCollinearLoop(loop,vertices,tolerance){
+  let out=loop.slice();
+  if(out.length<=3)return out;
+  const angleEps=2e-5;
+  let changed=true,guard=0;
+  while(changed&&out.length>3&&guard++<out.length*2){
+    changed=false;
+    for(let i=0;i<out.length;i++){
+      const ia=out[(i-1+out.length)%out.length],ib=out[i],ic=out[(i+1)%out.length];
+      const a=vertices[ia],b=vertices[ib],c=vertices[ic];
+      const ab=b.clone().sub(a),bc=c.clone().sub(b),lab=ab.length(),lbc=bc.length();
+      if(lab<=tolerance||lbc<=tolerance){out.splice(i,1);changed=true;break;}
+      const cross=ab.clone().cross(bc).length()/(lab*lbc);
+      const forward=ab.dot(bc)>0;
+      const lineDist=b.distanceTo(a.clone().addScaledVector(c.clone().sub(a),clamp(b.clone().sub(a).dot(c.clone().sub(a))/Math.max(1e-20,c.distanceToSquared(a)),0,1)));
+      if(forward&&cross<=angleEps&&lineDist<=tolerance*4){out.splice(i,1);changed=true;break;}
+    }
+  }
+  return out;
+}
+function exportBoundaryLoops(group,triangles){
+  const counts=new Map(),directed=new Map();
+  for(const ti of group){
+    const v=triangles[ti].v;
+    for(const [a,b] of [[v[0],v[1]],[v[1],v[2]],[v[2],v[0]]]){
+      const key=exportEdgeKey(a,b);
+      counts.set(key,(counts.get(key)||0)+1);
+      if(!directed.has(key))directed.set(key,[a,b]);
+    }
+  }
+  const boundary=[];
+  for(const [key,count] of counts)if(count===1)boundary.push(directed.get(key));
+  if(boundary.length<3)return null;
+  const outgoing=new Map();
+  boundary.forEach((e,i)=>{if(!outgoing.has(e[0]))outgoing.set(e[0],[]);outgoing.get(e[0]).push(i);});
+  const unused=new Set(boundary.map((_,i)=>i)),loops=[];
+  while(unused.size){
+    const first=unused.values().next().value;
+    const start=boundary[first][0];
+    let current=start,loop=[],guard=0;
+    while(guard++<=boundary.length+2){
+      const candidates=(outgoing.get(current)||[]).filter(i=>unused.has(i));
+      if(candidates.length!==1)return null;
+      const ei=candidates[0],[a,b]=boundary[ei];
+      unused.delete(ei);
+      if(a!==current)return null;
+      loop.push(a);current=b;
+      if(current===start)break;
+    }
+    if(current!==start||loop.length<3)return null;
+    loops.push(loop);
+  }
+  return loops;
+}
+function buildCleanOBJTopology(m){
+  const topo=exportPositionTopologyWorld(m);if(!topo)return null;
+  const {vertices,triangles,tolerance}=topo;
+  if(!triangles.length)return null;
+
+  const edgeMap=new Map();
+  triangles.forEach((t,ti)=>{
+    const v=t.v;
+    for(const [a,b] of [[v[0],v[1]],[v[1],v[2]],[v[2],v[0]]]){
+      const key=exportEdgeKey(a,b);if(!edgeMap.has(key))edgeMap.set(key,[]);edgeMap.get(key).push(ti);
+    }
+  });
+  const neighbors=triangles.map(()=>[]),normalDot=Math.cos(THREE.MathUtils.degToRad(.08)),planeTol=tolerance*5;
+  for(const list of edgeMap.values())if(list.length===2){
+    const a=list[0],b=list[1],ta=triangles[a],tb=triangles[b];
+    if(ta.normal.dot(tb.normal)>=normalDot&&Math.abs(ta.plane-tb.plane)<=planeTol){neighbors[a].push(b);neighbors[b].push(a);}
+  }
+
+  const seen=new Uint8Array(triangles.length),groups=[];
+  for(let i=0;i<triangles.length;i++)if(!seen[i]){
+    const group=[],stack=[i];seen[i]=1;
+    while(stack.length){const cur=stack.pop();group.push(cur);for(const n of neighbors[cur])if(!seen[n]){seen[n]=1;stack.push(n);}}
+    groups.push(group);
+  }
+
+  const faces=[];
+  for(const group of groups){
+    const loops=exportBoundaryLoops(group,triangles);
+    if(loops&&loops.length===1){
+      const loop=exportRemoveCollinearLoop(loops[0],vertices,tolerance);
+      if(loop.length>=3){faces.push(loop);continue;}
+    }
+    // OBJ cannot encode a planar face with holes as one polygon. Keep the source
+    // triangles only for those exceptional regions; ordinary caps/sides dissolve.
+    for(const ti of group)faces.push(triangles[ti].v.slice());
+  }
+
+  const used=new Set();for(const f of faces)for(const i of f)used.add(i);
+  const remap=new Map(),cleanVertices=[];
+  [...used].sort((a,b)=>a-b).forEach(old=>{remap.set(old,cleanVertices.length);cleanVertices.push(vertices[old]);});
+  const cleanFaces=faces.map(f=>f.map(i=>remap.get(i)));
+  return{vertices:cleanVertices,faces:cleanFaces};
+}
 function buildOBJText(){
   const exportMasses=liveExportMasses();
   if(!exportMasses.length)return '';
-  const lines=['# MA 3D OBJ export','# Geometry only · no materials · no helpers'];
-  let vertexBase=1,normalBase=1,lastGroup=null;
+  const lines=['# MA 3D OBJ export','# Clean editable topology · coplanar triangles dissolved · no materials · no helpers'];
+  let vertexBase=1,lastGroup=null;
   for(const m of exportMasses){
-    const g=exportGeometryWorldClone(m);
-    const pos=g.getAttribute('position'),normal=g.getAttribute('normal');
-    if(!pos||pos.count<3){g.dispose();continue;}
+    const topo=buildCleanOBJTopology(m);if(!topo||topo.vertices.length<3||!topo.faces.length)continue;
     const groupName=m.groupId==null?'UNGROUPED':`GROUP_${m.groupId}`;
     if(groupName!==lastGroup){lines.push(`g ${groupName}`);lastGroup=groupName;}
     lines.push(`o ${modelExportObjectName(m)}`);
-    for(let i=0;i<pos.count;i++)lines.push(`v ${exportNumber(pos.getX(i))} ${exportNumber(pos.getY(i))} ${exportNumber(pos.getZ(i))}`);
-    const hasNormals=!!normal&&normal.count===pos.count;
-    if(hasNormals){
-      for(let i=0;i<normal.count;i++)lines.push(`vn ${exportNumber(normal.getX(i))} ${exportNumber(normal.getY(i))} ${exportNumber(normal.getZ(i))}`);
-    }
-    const index=g.index?.array||null;
-    const triCount=index?Math.floor(index.length/3):Math.floor(pos.count/3);
-    for(let t=0;t<triCount;t++){
-      const ia=index?index[t*3]:t*3,ib=index?index[t*3+1]:t*3+1,ic=index?index[t*3+2]:t*3+2;
-      const a=vertexBase+ia,b=vertexBase+ib,c=vertexBase+ic;
-      if(hasNormals){
-        const na=normalBase+ia,nb=normalBase+ib,nc=normalBase+ic;
-        lines.push(`f ${a}//${na} ${b}//${nb} ${c}//${nc}`);
-      }else lines.push(`f ${a} ${b} ${c}`);
-    }
-    vertexBase+=pos.count;
-    if(hasNormals)normalBase+=normal.count;
-    g.dispose();
+    for(const v of topo.vertices)lines.push(`v ${exportNumber(v.x)} ${exportNumber(v.y)} ${exportNumber(v.z)}`);
+    for(const face of topo.faces)lines.push(`f ${face.map(i=>vertexBase+i).join(' ')}`);
+    vertexBase+=topo.vertices.length;
   }
   return lines.join('\n')+'\n';
 }
@@ -3086,74 +3199,6 @@ async function exportCurrentOBJ(){
     return delivered;
   }catch(err){console.warn('OBJ export failed',err);showToast('OBJ EXPORT FAILED');return false;}
 }
-function makeGLBExportRoot(){
-  const root=new THREE.Group();root.name='MA_3D';
-  const groupNodes=new Map(),geometries=[];
-  // Temporary exporter material only. It is stripped from the final GLB JSON,
-  // so the delivered file contains geometry/nodes but no MA display material.
-  const temporaryMaterial=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0});
-  for(const m of liveExportMasses()){
-    const geometry=exportGeometryWorldClone(m);geometries.push(geometry);
-    const mesh=new THREE.Mesh(geometry,temporaryMaterial);
-    mesh.name=modelExportObjectName(m);
-    mesh.userData={maId:m.id,maType:m.type||'mass'};
-    if(m.groupId!=null){
-      let parent=groupNodes.get(m.groupId);
-      if(!parent){parent=new THREE.Group();parent.name=`GROUP_${m.groupId}`;parent.userData={maGroupId:m.groupId};groupNodes.set(m.groupId,parent);root.add(parent);}
-      parent.add(mesh);
-    }else root.add(mesh);
-  }
-  return{root,dispose(){for(const g of geometries)g.dispose();temporaryMaterial.dispose();}};
-}
-function stripMaterialsFromGLB(buffer){
-  try{
-    const src=buffer instanceof ArrayBuffer?buffer:buffer.buffer;
-    const dv=new DataView(src);
-    if(dv.byteLength<20||dv.getUint32(0,true)!==0x46546c67||dv.getUint32(4,true)!==2)return src;
-    const declared=Math.min(dv.getUint32(8,true),dv.byteLength),chunks=[];
-    let off=12;
-    while(off+8<=declared){
-      const len=dv.getUint32(off,true),type=dv.getUint32(off+4,true),start=off+8,end=start+len;
-      if(end>declared)break;
-      chunks.push({type,data:new Uint8Array(src.slice(start,end))});
-      off=end;
-    }
-    const jsonChunk=chunks.find(c=>c.type===0x4e4f534a);if(!jsonChunk)return src;
-    const raw=new TextDecoder().decode(jsonChunk.data).replace(/[\u0000 ]+$/g,'');
-    const json=JSON.parse(raw);
-    delete json.materials;
-    if(Array.isArray(json.meshes))for(const mesh of json.meshes)if(Array.isArray(mesh.primitives))for(const primitive of mesh.primitives)delete primitive.material;
-    // No texture-bearing MA materials exist, but remove any exporter-only empty
-    // material infrastructure if it ever appears with the temporary material.
-    if(!json.materials){delete json.textures;delete json.images;delete json.samplers;}
-    const encoded=new TextEncoder().encode(JSON.stringify(json));
-    const paddedLength=(encoded.length+3)&~3;
-    const padded=new Uint8Array(paddedLength);padded.fill(0x20);padded.set(encoded);
-    jsonChunk.data=padded;
-    const total=12+chunks.reduce((sum,c)=>sum+8+c.data.byteLength,0);
-    const out=new ArrayBuffer(total),outView=new DataView(out),outBytes=new Uint8Array(out);
-    outView.setUint32(0,0x46546c67,true);outView.setUint32(4,2,true);outView.setUint32(8,total,true);
-    let dst=12;
-    for(const c of chunks){outView.setUint32(dst,c.data.byteLength,true);outView.setUint32(dst+4,c.type,true);outBytes.set(c.data,dst+8);dst+=8+c.data.byteLength;}
-    return out;
-  }catch(err){console.warn('GLB material strip failed; using exporter output',err);return buffer;}
-}
-async function exportCurrentGLB(){
-  if(!liveExportMasses().length){showToast('NO GEOMETRY TO EXPORT');return false;}
-  const job=makeGLBExportRoot();
-  try{
-    const exporter=new GLTFExporter();
-    const raw=await new Promise((resolve,reject)=>exporter.parse(job.root,resolve,reject,{binary:true,onlyVisible:true,trs:false}));
-    const buffer=stripMaterialsFromGLB(raw);
-    const name=`${modelExportBaseName()}.glb`;
-    const file=new File([buffer],name,{type:'model/gltf-binary'});
-    const delivered=await deliverExportFile(file,'MA 3D · GLB');
-    if(delivered)showToast('GLB EXPORTED');
-    return delivered;
-  }catch(err){console.warn('GLB export failed',err);showToast('GLB EXPORT FAILED');return false;}
-  finally{job.dispose();}
-}
-
 // v7.99 — PSD export stays a genuine layered Photoshop document and now
 // shares immediately after generation. PSD sharing bypasses the generic
 // image/share helper: no title/text, no canShare gate, and no PNG/download
@@ -3780,6 +3825,13 @@ function worldUnitsPerPixel(p){
 // tolerance at the current drawing depth while leaving the actual camera/FOV alone.
 // Orthographic views have no perspective FOV, so their existing pixel scale is used.
 const SHAPE_REFERENCE_FOV_DEG=35;
+// v8.55 — keep SHAPE visually smooth but deliberately lower its mesh density.
+// These are screen-space targets, so the amount of geometry stays consistent
+// across zoom/FOV/device changes without returning to the very dense v8.41 mesh.
+const SHAPE_SAMPLE_SPACING_PX=4.2;
+const SHAPE_MAX_POINTS=96;
+const SHAPE_ASSIST_SAMPLE_SPACING_PX=4.5;
+const SHAPE_ASSIST_MAX_POINTS=90;
 function shapeWorldUnitsPerPixel(p){
   if(camera.isOrthographicCamera)return worldUnitsPerPixel(p);
   const d=Math.max(.000001,camera.position.distanceTo(p));
@@ -6284,8 +6336,7 @@ const EXPORT_DOCK_ACTIONS=[
   [PRIMARY_MIDDLE_SLOT_IDS[0],'viewPsd'],
   [PRIMARY_MIDDLE_SLOT_IDS[1],'scenesPng'],
   [PRIMARY_MIDDLE_SLOT_IDS[2],'scenesPsd'],
-  [PRIMARY_MIDDLE_SLOT_IDS[3],'obj'],
-  ['lookJoystick','glb']
+  [PRIMARY_MIDDLE_SLOT_IDS[3],'obj']
 ];
 function syncExportDockVisuals(){
   const view=document.getElementById('viewJoystick');
@@ -6295,7 +6346,7 @@ function syncExportDockVisuals(){
   look?.classList.toggle('exportDockMode',!!exportDockOpen);
   modeBar?.classList.toggle('exportDockMode',!!exportDockOpen);
   if(view){if(exportDockOpen)view.dataset.exportLabel='VIEW PNG';else delete view.dataset.exportLabel;}
-  if(look){if(exportDockOpen)look.dataset.exportLabel='GLB';else delete look.dataset.exportLabel;}
+  if(look){delete look.dataset.exportLabel;}
 }
 function setExportDockOpen(open){
   exportDockOpen=!!open;
@@ -7148,7 +7199,7 @@ function repairShapeProfileForCommit(st,profile,sourcePoints){
   const px=Math.max(.0015,shapeWorldUnitsPerPixel(ref));
   for(const factor of [1.2,1.8,2.6,3.8]){
     let candidate=cleanProfile(rdp(p,px*factor),.001);
-    candidate=resampleOpenShapeProfile(candidate,px*3.0,120);
+    candidate=resampleOpenShapeProfile(candidate,px*SHAPE_SAMPLE_SPACING_PX,SHAPE_MAX_POINTS);
     candidate=smoothOpenShapeProfile(candidate,2,.38);
     candidate=cleanProfile(candidate,.001);
     if(validShapeProfile(candidate))return candidate;
@@ -7189,10 +7240,10 @@ function buildShapeAssistProfile(st,points){
   const level=Math.max(0,st?.shapeAssistLevel||0);
 
   // Keep freehand sensitivity in screen-space. Uniform resampling removes
-  // browser/Pencil event-density differences; a restrained Laplacian filter
-  // removes hand jitter without turning the silhouette into a generic blob.
+  // browser/Pencil event-density differences while v8.55 intentionally keeps
+  // fewer samples; smoothing preserves the silhouette without excessive edges.
   let profile=cleanOpenShapePath(raw,px*.7);
-  profile=resampleOpenShapeProfile(profile,px*(2.8+level*.35),150);
+  profile=resampleOpenShapeProfile(profile,px*(SHAPE_SAMPLE_SPACING_PX+level*.35),SHAPE_MAX_POINTS);
   profile=smoothOpenShapeProfile(profile,2+Math.min(2,level),.40+Math.min(.12,level*.035));
 
   // The hold-to-assist feature still straightens near-axis sections, but normal
@@ -7201,7 +7252,7 @@ function buildShapeAssistProfile(st,points){
   if(level>0){
     profile=rdp(profile,px*(.75+level*.75));
     profile=snapAssistedShapeSegments(profile,level);
-    profile=resampleOpenShapeProfile(profile,px*3.0,140);
+    profile=resampleOpenShapeProfile(profile,px*SHAPE_ASSIST_SAMPLE_SPACING_PX,SHAPE_ASSIST_MAX_POINTS);
     profile=smoothOpenShapeProfile(profile,1,.28);
   }
   profile=cleanOpenShapePath(profile,px*.5);
@@ -7370,10 +7421,10 @@ function commitShapeFill(st,points){
 
   // Keep fills light with uniform resampling. Taking every Nth point made the
   // final polygon visibly change at commit and could turn a smooth bend angular.
-  if(st.tool!=='boxbrush'&&profile.length>120){
+  if(st.tool!=='boxbrush'&&profile.length>SHAPE_MAX_POINTS){
     const ref=(st?.plane||workplane).origin;
     const px=Math.max(.0015,shapeWorldUnitsPerPixel(ref));
-    profile=resampleOpenShapeProfile(profile,px*3.0,120);
+    profile=resampleOpenShapeProfile(profile,px*SHAPE_SAMPLE_SPACING_PX,SHAPE_MAX_POINTS);
     profile=smoothOpenShapeProfile(profile,1,.24);
     profile=cleanProfile(profile,.0015);
   }
@@ -9363,8 +9414,7 @@ const shortcutActions=[
   {group:'Output',id:'exportProcreatePSD',label:'View PSD',default:'',run:()=>exportProcreatePSD()},
   {group:'Output',id:'scenesPNG',label:'Scenes PNG · current mood',default:'',run:()=>exportAllScenesCurrentMoodPNGs()},
   {group:'Output',id:'scenesPSD',label:'Scenes PSD',default:'',run:()=>exportAllScenesMoodPSDs()},
-  {group:'Output',id:'exportOBJ',label:'3D · OBJ',default:'',run:()=>exportCurrentOBJ()},
-  {group:'Output',id:'exportGLB',label:'3D · GLB',default:'',run:()=>exportCurrentGLB()}
+  {group:'Output',id:'exportOBJ',label:'3D · OBJ',default:'',run:()=>exportCurrentOBJ()}
 ];
 let shortcutBindings={},shortcutCaptureActionId=null;
 function defaultShortcutBindings(){const o={};for(const a of shortcutActions)o[a.id]=a.default||'';return o;}
@@ -10825,7 +10875,7 @@ function runMAMenuDockAction(action,e){
   }
   if(action==='export'){
     setExportDockOpen(true);
-    showToast('EXPORT · VIEW PNG · VIEW PSD · SCENES PNG · SCENES PSD · OBJ · GLB');
+    showToast('EXPORT · VIEW PNG · VIEW PSD · SCENES PNG · SCENES PSD · OBJ');
     return;
   }
   if(action==='safe'){
@@ -10886,7 +10936,6 @@ function runExportDockAction(action){
   if(action==='scenesPng'){exportAllScenesCurrentMoodPNGs();return;}
   if(action==='scenesPsd'){exportAllScenesMoodPSDs();return;}
   if(action==='obj'){exportCurrentOBJ();return;}
-  if(action==='glb'){exportCurrentGLB();return;}
 }
 function installExportDockControl(id,action){
   const el=document.getElementById(id);if(!el)return;
