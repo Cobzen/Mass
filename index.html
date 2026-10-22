@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.89">
+<meta name="ma-build" content="8.90">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.89</title>
+<title>MA 3D · v8.90</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.89';
+  const CURRENT_BUILD = '8.90';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -2783,6 +2783,31 @@ let pencilDrawButtonPress=null;
 const PENCIL_DRAW_MENU_HOLD_MS=60;
 const PENCIL_DRAW_TOGGLE_HOLD_MS=220;
 const touchPointers=new Map();let touchNavState=null,touchGesture=null,touchOrbitPivot=null,touchNavRAF=0,touchPanScale=0;
+// v8.90 — iPhone/iPad home-indicator safe zone. Touches that START in this
+// bottom strip belong to iOS, not MA 3D. UI controls are unaffected because
+// they are intercepted before viewport input; Apple Pencil is unaffected too.
+const homeGestureSafePointers=new Set();
+let homeGestureInsetProbe=null;
+function iosHomeGestureSafeZonePx(){
+  if(!(window.__MA_IS_IPHONE__||window.__MA_IS_IPAD__))return 0;
+  if(!homeGestureInsetProbe&&document.body){
+    const probe=document.createElement('div');
+    probe.setAttribute('aria-hidden','true');
+    probe.style.cssText='position:fixed;left:-10000px;bottom:0;width:1px;height:env(safe-area-inset-bottom);visibility:hidden;pointer-events:none;';
+    document.body.appendChild(probe);
+    homeGestureInsetProbe=probe;
+  }
+  const safe=homeGestureInsetProbe?(parseFloat(getComputedStyle(homeGestureInsetProbe).height)||0):0;
+  // Home-indicator inset + a small buffer. Keep a useful minimum on iPads /
+  // browser states where safe-area-inset-bottom can temporarily report zero.
+  return Math.min(80,Math.max(44,safe+18));
+}
+function touchStartsInHomeGestureSafeZone(e){
+  if(e.pointerType!=='touch'||!(window.__MA_IS_IPHONE__||window.__MA_IS_IPAD__))return false;
+  const vv=window.visualViewport;
+  const bottom=vv?vv.offsetTop+vv.height:(window.innerHeight||document.documentElement.clientHeight||0);
+  return e.clientY>=bottom-iosHomeGestureSafeZonePx();
+}
 // v8.87 — keep the existing three-finger REDO tap crisp by requiring a tiny
 // stationary hold before three-finger movement becomes an FOV gesture.
 const TOUCH_FOV_HOLD_MS=120;
@@ -13221,6 +13246,13 @@ renderer.domElement.addEventListener('pointerdown',e=>{
     }
 
     if(e.pointerType==='touch'){
+      // v8.90 — leave the home-indicator strip completely to iOS. Do NOT call
+      // preventDefault here: that lets the system home gesture win immediately
+      // instead of MA starting a camera/model gesture for the first few pixels.
+      if(touchStartsInHomeGestureSafeZone(e)||homeGestureSafePointers.size){
+        homeGestureSafePointers.add(e.pointerId);
+        return;
+      }
       e.preventDefault();
 
       // v8.50 — if SELECT is already active and its button is currently being
@@ -13533,6 +13565,7 @@ window.addEventListener('pointermove',e=>{
   if(MA_UNIFIED_UI){
     if(unifiedUIPointers.has(e.pointerId))return;
     if(e.pointerType==='touch'){
+      if(homeGestureSafePointers.has(e.pointerId))return;
       if(ipadPencilMode){
         if(!touchPointers.has(e.pointerId))return;
         e.preventDefault();
@@ -13739,6 +13772,10 @@ window.addEventListener('pointerup',e=>{
       return;
     }
     if(e.pointerType==='touch'){
+      if(homeGestureSafePointers.has(e.pointerId)){
+        homeGestureSafePointers.delete(e.pointerId);
+        return;
+      }
       if(ipadPencilMode&&mobileSelectTap?.pointerId!==e.pointerId&&marqueeState?.pointerId!==e.pointerId){
         const pt=touchPointers.get(e.pointerId);
         if(touchGesture&&pt){
@@ -14025,6 +14062,10 @@ window.addEventListener('pointercancel',e=>{
     if(mobileSelectTap?.pointerId===e.pointerId)mobileSelectTap=null;
 
     if(e.pointerType==='touch'){
+      if(homeGestureSafePointers.has(e.pointerId)){
+        homeGestureSafePointers.delete(e.pointerId);
+        return;
+      }
       if(ipadPencilMode){
         touchPointers.delete(e.pointerId);
         if(!touchPointers.size){
@@ -14309,6 +14350,7 @@ window.addEventListener('pointerup',()=>scheduleAutosave());
 // v5.92 — A suspended iOS standalone app may resume without a clean pointer end.
 // Never carry touch-navigation state across app background/foreground boundaries.
 function resetTouchNavigationRuntime(){
+  homeGestureSafePointers.clear();
   cancelTouchCameraUpdate();
   stylusTouchFallbackIds.clear();
   lastNativePenPointerAt=0;
