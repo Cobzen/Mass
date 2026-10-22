@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.74">
+<meta name="ma-build" content="8.76">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.74</title>
+<title>MA 3D · v8.76</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.74';
+  const CURRENT_BUILD = '8.76';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -986,6 +986,34 @@ html.ma-library-open #maBottomDock, html.ma-library-open #mainMenuButton, html.m
     gap:10px;
   }
   .libraryHeader h1{font-size:24px}
+
+  /* v8.75 — phone library cards: project title owns the full card width.
+     Actions sit on their own row so SHARE/rename/delete never squeeze the name. */
+  .libraryMeta{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    gap:7px;
+    padding-top:9px;
+  }
+  .libraryMeta > div:first-child{
+    min-width:0;
+    width:100%;
+  }
+  .libraryName{
+    width:100%;
+    white-space:normal;
+    overflow:hidden;
+    text-overflow:clip;
+    display:-webkit-box;
+    -webkit-box-orient:vertical;
+    -webkit-line-clamp:2;
+    line-height:1.15;
+    min-height:1.15em;
+  }
+  .libraryCardActions{
+    width:100%;
+    justify-content:flex-start;
+  }
 }
 
 /* v7.44 — compact workspace menu: size to its actual content */
@@ -4921,10 +4949,6 @@ function hydrateLibraryRecord(raw){
   };
 }
 
-function libraryProjectObjectCount(record){
-  return record?.project?.scene?.masses?.length||0;
-}
-
 function readLibraryFallbackIndex(){
   try{
     const raw=localStorage.getItem(MA_LIBRARY_FALLBACK_INDEX);
@@ -5339,7 +5363,7 @@ function renderProjectLibraryRecords(projects){
         <div class="libraryMeta">
           <div style="min-width:0">
             <div class="libraryName">${libraryEscape(p.name||'Untitled')}${current?'<span class="libraryCurrent">CURRENT</span>':''}</div>
-            <div class="libraryDate">${libraryEscape(formatLibraryDate(p.updatedAt))} · ${libraryProjectObjectCount(p)} OBJECT${libraryProjectObjectCount(p)===1?'':'S'}</div>
+            <div class="libraryDate">${libraryEscape(formatLibraryDate(p.updatedAt))}</div>
           </div>
           <div class="libraryCardActions">
             <button type="button" data-library-action="share" data-project-id="${libraryEscape(p.id)}" title="Share project">SHARE</button>
