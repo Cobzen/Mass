@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.85">
+<meta name="ma-build" content="8.89">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.88</title>
+<title>MA 3D · v8.89</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.85';
+  const CURRENT_BUILD = '8.89';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -2783,7 +2783,7 @@ let pencilDrawButtonPress=null;
 const PENCIL_DRAW_MENU_HOLD_MS=60;
 const PENCIL_DRAW_TOGGLE_HOLD_MS=220;
 const touchPointers=new Map();let touchNavState=null,touchGesture=null,touchOrbitPivot=null,touchNavRAF=0,touchPanScale=0;
-// v8.88 — keep the existing three-finger REDO tap crisp by requiring a tiny
+// v8.87 — keep the existing three-finger REDO tap crisp by requiring a tiny
 // stationary hold before three-finger movement becomes an FOV gesture.
 const TOUCH_FOV_HOLD_MS=120;
 const TOUCH_FOV_MOVE_THRESHOLD_PX=1.25;
@@ -2964,21 +2964,11 @@ function openSafeFramePanel(force){
   syncSafeFrameUI();
   updateMobileDrawUI?.();
 }
-// v8.88 — iOS export memory policy. Keep single-image PNG at 4K, but
-// reduce layered PSD peak memory because four full RGBA canvases plus the PSD
-// encoder buffer otherwise coexist in RAM. iPhone is the tightest target.
-function isMemorySensitiveIOSExport(){return !!(MA_IS_IPHONE||MA_IS_IPAD);}
-function psdExportLongEdge(){return MA_IS_IPHONE?2560:(MA_IS_IPAD?3072:4096);}
-function releaseExportCanvas(canvas){
-  if(!canvas||canvas===renderer.domElement)return;
-  canvas.width=1;canvas.height=1;
-}
-function yieldExportMemory(){
-  return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-}
-async function downloadCanvasPNG(canvas,name='MA-mass-blockout.png'){
-  const blob=await canvasToBlob(canvas,'image/png');
-  downloadBlob(blob,name);
+function downloadCanvasPNG(canvas,name='MA-mass-blockout.png'){
+  const a=document.createElement('a');
+  a.download=name;
+  a.href=canvas.toDataURL('image/png');
+  a.click();
 }
 function buildHighResExport(targetLongEdge=4096){
   // Keep the working viewport light. Only export/share is temporarily rendered at high resolution.
@@ -2994,12 +2984,26 @@ function buildHighResExport(targetLongEdge=4096){
   const frameRect=(safeFrameState.enabled&&ui.safeFrameFrame)?ui.safeFrameFrame.getBoundingClientRect():containerRect;
 
   const frameLongEdge=Math.max(1,frameRect.width,frameRect.height);
-  const requestedRatio=targetLongEdge/frameLongEdge;
+  const containerLongEdge=Math.max(1,containerRect.width,containerRect.height);
+  let requestedRatio=targetLongEdge/frameLongEdge;
+
+  // v8.89 — Safe Frame crop must never force the entire mobile WebGL viewport
+  // above the normal export target. Previously a 60% Safe Frame could make the
+  // full offscreen renderer ~6.8K+ just to produce a 4K crop, which can exhaust
+  // iOS WebKit/GPU memory and kill the app. Keep the old export path unchanged,
+  // but on touch devices cap the *full* render to targetLongEdge and crop from it.
+  // Geometry/camera composition remain identical; only wasteful oversampling
+  // outside the Safe Frame is removed.
+  if(MA_DRAW_MOBILE&&safeFrameState.enabled){
+    const fullViewportTargetRatio=targetLongEdge/containerLongEdge;
+    requestedRatio=Math.min(requestedRatio,fullViewportTargetRatio);
+  }
+
   const maxTex=renderer.capabilities.maxTextureSize||8192;
   const maxRatio=Math.min(maxTex/Math.max(1,containerRect.width),maxTex/Math.max(1,containerRect.height));
   const exportPixelRatio=Math.max(1,Math.min(requestedRatio,maxRatio));
 
-  const exportShadowSize=Math.min(isMemorySensitiveIOSExport()?2048:4096,maxTex);
+  const exportShadowSize=Math.min(4096,maxTex);
   sun.shadow.mapSize.set(exportShadowSize,exportShadowSize);
   if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}
   if(sun.shadow.mapPass){sun.shadow.mapPass.dispose();sun.shadow.mapPass=null;}
@@ -3066,58 +3070,40 @@ function buildHighResExport(targetLongEdge=4096){
   return{canvas:exportCanvas,name:exportName,restore};
 }
 function exportCurrentPNG(){
-  // Build/share asynchronously so iOS never needs a Base64 copy of the 4K image.
+  // iOS/PWA does not reliably honor <a download>. Use the native Share Sheet
+  // for PNG export when available, just like project sharing.
   shareCurrentPNG();
 }
-let pendingViewPngFile=null;
-async function shareCurrentPNG(){
-  // If a prior async build could not open the Share Sheet because iOS user
-  // activation expired, the next tap shares the already-built file immediately.
-  if(pendingViewPngFile){
-    const file=pendingViewPngFile;
-    if(typeof navigator.share==='function'&&(!navigator.canShare||navigator.canShare({files:[file]}))){
-      try{await navigator.share({files:[file]});pendingViewPngFile=null;showToast('PNG SHARED');return true;}
-      catch(err){if(err?.name==='AbortError')return false;console.warn('MA PNG share failed',err);}
-    }
-    downloadBlob(file,file.name);pendingViewPngFile=null;showToast('PNG DOWNLOADED');return true;
-  }
-
-  const job=buildHighResExport(4096);
-  let blob=null,file=null;
+function dataURLToFile(dataURL,name){
+  const parts=dataURL.split(','),meta=parts[0],data=parts[1]||'';
+  const mime=(meta.match(/data:([^;]+)/)||[])[1]||'image/png';
+  const bytes=atob(data),arr=new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i++)arr[i]=bytes.charCodeAt(i);
+  return new File([arr],name,{type:mime});
+}
+function shareCurrentPNG(){
+  const job=buildHighResExport();
   try{
-    blob=await canvasToBlob(job.canvas,'image/png');
-    file=new File([blob],job.name,{type:'image/png'});
-  }catch(err){
-    console.warn('MA PNG encode failed',err);
-    showToast('PNG EXPORT FAILED');
-    return false;
-  }finally{
-    // Crucial on iOS: tear down the 4K WebGL targets before opening Share.
-    job.restore();
-    releaseExportCanvas(job.canvas);
-  }
-
-  pendingViewPngFile=file;
-  await yieldExportMemory();
-  if(typeof navigator.share==='function'&&(!navigator.canShare||navigator.canShare({files:[file]}))){
-    try{
-      await navigator.share({files:[file]});
-      if(pendingViewPngFile===file)pendingViewPngFile=null;
-      showToast(safeFrameState.enabled?'EXPORT PNG · SAFE FRAME · SHARED':'PNG SHARED');
-      return true;
-    }catch(err){
-      if(err?.name==='AbortError')return false;
-      // NotAllowedError is common after asynchronous canvas encoding on iOS.
-      // Keep the file ready so the next VIEW PNG tap can share synchronously.
-      console.warn('MA PNG share deferred',err);
-      showToast('PNG READY · TAP VIEW PNG TO SHARE');
-      return false;
+    const file=dataURLToFile(job.canvas.toDataURL('image/png'),job.name);
+    if(typeof navigator.share==='function'){
+      navigator.share({files:[file]}).catch(err=>{
+        if(err?.name!=='AbortError'){
+          console.warn('MA PNG share failed',err);
+          downloadCanvasPNG(job.canvas,job.name);
+          showToast('PNG SHARE FAILED · DOWNLOAD FALLBACK');
+        }
+      }).finally(()=>job.restore());
+      showToast(safeFrameState.enabled?'EXPORT PNG · SAFE FRAME · SHARE':'EXPORT PNG · SHARE');
+      return;
     }
+    downloadCanvasPNG(job.canvas,job.name);
+    showToast('PNG DOWNLOADED');
+  }catch(err){
+    console.warn('MA PNG export failed',err);
+    try{downloadCanvasPNG(job.canvas,job.name);}catch(_){}
+    showToast('PNG EXPORT FAILED');
   }
-  downloadBlob(file,file.name);
-  if(pendingViewPngFile===file)pendingViewPngFile=null;
-  showToast('PNG DOWNLOADED');
-  return true;
+  job.restore();
 }
 const ALL_VIEW_EXPORTS=[
   {mode:'workspace',name:'Workspace',slug:'workspace'},
@@ -3346,17 +3332,14 @@ async function exportCurrentOBJ(){
 // preserved for Procreate import routing.
 let pendingViewPsdFile=null;
 let pendingScenePsdFiles=[];
-let pendingScenePsdQueue=[];
 let viewPsdBuildInProgress=false;
 let scenePsdBuildInProgress=false;
 function pendingPsdExportUIChanged(){
   if(typeof syncPrimaryDockUI==='function')syncPrimaryDockUI();
 }
 function clearPendingPsdExports(){
-  pendingViewPngFile=null;
   pendingViewPsdFile=null;
   pendingScenePsdFiles=[];
-  pendingScenePsdQueue=[];
   viewPsdBuildInProgress=false;
   scenePsdBuildInProgress=false;
   pendingPsdExportUIChanged();
@@ -3410,7 +3393,7 @@ function sharePendingScenePSDs(){
     if(pendingScenePsdFiles[0]===file)pendingScenePsdFiles.shift();
     else pendingScenePsdFiles=pendingScenePsdFiles.filter(x=>x!==file);
     pendingPsdExportUIChanged();
-    showToast((pendingScenePsdFiles.length||pendingScenePsdQueue.length)?'SCENE PSD SHARED · TAP SCN PSD FOR NEXT':'ALL SCENE PSDs SHARED');
+    showToast(pendingScenePsdFiles.length?'SCENE PSD SHARED · TAP SCN PSD FOR NEXT':'ALL SCENE PSDs SHARED');
   });
 }
 function captureViewRuntimeState(){
@@ -3447,7 +3430,7 @@ async function exportProcreatePSD(){
   const runtime=captureViewRuntimeState(),layers=[];let restored=false;
   try{
     for(const spec of ALL_VIEW_EXPORTS){
-      const canvas=await renderDetachedViewCanvas(spec,psdExportLongEdge());
+      const canvas=await renderDetachedViewCanvas(spec,4096);
       layers.push({spec,canvas});
     }
     const width=layers[0]?.canvas.width||1,height=layers[0]?.canvas.height||1;
@@ -3459,15 +3442,11 @@ async function exportProcreatePSD(){
       name:spec.name,canvas,hidden:spec.mode!=='workspace',blendMode:'normal',opacity:1
     }));
     const psd={width,height,canvas:workspace,children};
-    let buffer=writePsd(psd,{trimImageData:true,noBackground:true,generateThumbnail:false});
+    const buffer=writePsd(psd,{trimImageData:true,noBackground:true,generateThumbnail:false});
     const name=`MA-Procreate-views${safeFrameState.enabled?'-'+safeFrameState.aspect.replace(':','x'):''}.psd`;
-    // Drop the four raw RGBA canvases before wrapping/copying the PSD bytes into a File.
-    for(const x of layers)releaseExportCanvas(x.canvas);
-    layers.length=0;
     pendingViewPsdFile=validatedPsdFile(buffer,name);
-    buffer=null;
+    for(const x of layers){x.canvas.width=1;x.canvas.height=1;}
     restoreViewRuntimeState(runtime);restored=true;
-    await yieldExportMemory();
     const file=pendingViewPsdFile;
     const shared=sharePsdFileNow(file,()=>{
       if(pendingViewPsdFile===file)pendingViewPsdFile=null;
@@ -3568,8 +3547,7 @@ async function exportAllScenesCurrentMoodPNGs(){
         const blob=await canvasToBlob(job.canvas,'image/png');
         const safeSuffix=safeFrameState.enabled?`-${safeFrameState.aspect.replace(':','x')}`:'';
         files.push(new File([blob],`MA-S${scene.id}-${spec.slug}${safeSuffix}.png`,{type:'image/png'}));
-      }finally{job.restore();releaseExportCanvas(job.canvas);}
-      await yieldExportMemory();
+      }finally{job.restore();}
     }
     restoreFullExportState(original);restored=true;
     await deliverExportFiles(files,`MA 3D · Scenes · ${spec.name}`);
@@ -3580,67 +3558,48 @@ async function exportAllScenesCurrentMoodPNGs(){
   }finally{if(!restored)restoreFullExportState(original);}
 }
 async function exportAllScenesMoodPSDs(){
+  if(pendingScenePsdFiles.length)return sharePendingScenePSDs();
   if(scenePsdBuildInProgress)return false;
 
-  // Share an already-built file first. Only one scene PSD is retained at a time.
-  if(pendingScenePsdFiles.length){
-    const shared=sharePendingScenePSDs();
-    return shared||true;
-  }
-
-  if(!pendingScenePsdQueue.length){
-    const scenes=sceneExportList();
-    if(!scenes.length){showToast('NO SAVED SCENES');return false;}
-    pendingScenePsdQueue=scenes.map(s=>s.id);
-  }
-
-  const sceneId=pendingScenePsdQueue[0];
-  const scene=savedScenes.find(s=>s?.view&&s.id===sceneId);
-  if(!scene){
-    pendingScenePsdQueue.shift();
-    return pendingScenePsdQueue.length?exportAllScenesMoodPSDs():false;
-  }
-
+  const scenes=sceneExportList();
+  if(!scenes.length){showToast('NO SAVED SCENES');return false;}
   scenePsdBuildInProgress=true;
   pendingPsdExportUIChanged();
   const original=captureFullExportState();
-  const layers=[];let restored=false;
+  const files=[];let restored=false;
   try{
-    applyExportCameraSnapshot(scene.view);
-    restoreViewSettings(scene.view?.viewSettings,scene.view?.light,scene.view?.depthView);
-    applyExportSafeFrameSnapshot(scene.view);
-    for(const spec of ALL_VIEW_EXPORTS){
-      const canvas=await renderDetachedViewCanvas(spec,psdExportLongEdge());
-      layers.push({spec,canvas});
-      await yieldExportMemory();
+    for(const scene of scenes){
+      const layers=[];
+      try{
+        applyExportCameraSnapshot(scene.view);
+        restoreViewSettings(scene.view?.viewSettings,scene.view?.light,scene.view?.depthView);
+        applyExportSafeFrameSnapshot(scene.view);
+        for(const spec of ALL_VIEW_EXPORTS){
+          const canvas=await renderDetachedViewCanvas(spec,4096);
+          layers.push({spec,canvas});
+        }
+        const width=layers[0]?.canvas.width||1,height=layers[0]?.canvas.height||1;
+        if(layers.some(x=>x.canvas.width!==width||x.canvas.height!==height))throw new Error(`Scene ${scene.id} mood sizes differ`);
+        const workspace=layers.find(x=>x.spec.mode==='workspace')?.canvas||layers[0].canvas;
+        const children=[...layers].reverse().map(({spec,canvas})=>({name:spec.name,canvas,hidden:spec.mode!=='workspace',blendMode:'normal',opacity:1}));
+        const psd={width,height,canvas:workspace,children};
+        const buffer=writePsd(psd,{trimImageData:true,noBackground:true,generateThumbnail:false});
+        const safeSuffix=safeFrameState.enabled?`-${safeFrameState.aspect.replace(':','x')}`:'';
+        files.push(validatedPsdFile(buffer,`MA-S${scene.id}-moods${safeSuffix}.psd`));
+      }finally{
+        for(const x of layers){x.canvas.width=1;x.canvas.height=1;}
+      }
     }
-    const width=layers[0]?.canvas.width||1,height=layers[0]?.canvas.height||1;
-    if(layers.some(x=>x.canvas.width!==width||x.canvas.height!==height))throw new Error(`Scene ${scene.id} mood sizes differ`);
-    const workspace=layers.find(x=>x.spec.mode==='workspace')?.canvas||layers[0].canvas;
-    const children=[...layers].reverse().map(({spec,canvas})=>({name:spec.name,canvas,hidden:spec.mode!=='workspace',blendMode:'normal',opacity:1}));
-    const psd={width,height,canvas:workspace,children};
-    let buffer=writePsd(psd,{trimImageData:true,noBackground:true,generateThumbnail:false});
-    const safeSuffix=safeFrameState.enabled?`-${safeFrameState.aspect.replace(':','x')}`:'';
-    for(const x of layers)releaseExportCanvas(x.canvas);
-    layers.length=0;
-    const file=validatedPsdFile(buffer,`MA-S${scene.id}-moods${safeSuffix}.psd`);
-    buffer=null;
-    pendingScenePsdFiles=[file];
-    pendingScenePsdQueue.shift();
     restoreFullExportState(original);restored=true;
-    await yieldExportMemory();
-
+    pendingScenePsdFiles=[...files];
     const shared=sharePendingScenePSDs();
-    if(!shared)showToast(`SCENE ${scene.id} PSD READY`);
-    return true;
+    if(!shared)showToast(`${files.length} SCENE PSD${files.length===1?'':'S'} READY`);
+    return shared||true;
   }catch(err){
     pendingScenePsdFiles=[];
-    console.warn('Scene PSD export failed',err);
-    window.alert('Kunne ikke eksportere scene som PSD.');
-    return false;
+    console.warn('Scene PSD export failed',err);window.alert('Kunne ikke eksportere scenes som PSD.');return false;
   }finally{
     scenePsdBuildInProgress=false;
-    for(const x of layers)releaseExportCanvas(x.canvas);
     if(!restored)restoreFullExportState(original);
     pendingPsdExportUIChanged();
   }
@@ -6721,7 +6680,7 @@ function syncPrimaryDockUI(){
     const scenePsdLabel=scenePsdBuildInProgress?'BUILDING':'SCN PSD';
     setPrimaryDockButtonVisual(slot2,viewPsdLabel,{active:!!pendingViewPsdFile});
     setPrimaryDockButtonVisual(slot3,'SCN PNG');
-    setPrimaryDockButtonVisual(slot4,scenePsdLabel,{active:!!(pendingScenePsdFiles.length||pendingScenePsdQueue.length)});
+    setPrimaryDockButtonVisual(slot4,scenePsdLabel,{active:!!pendingScenePsdFiles.length});
     setPrimaryDockButtonVisual(slot5,'OBJ');
     syncExportDockVisuals();
     return;
@@ -10398,7 +10357,7 @@ function positionSecondaryViewPanels(){
 function applyDockPosition(){
   if(!maControlsDock)return;
 
-  // v8.88: iPhone never uses a saved/movable dock position. Portrait is fixed
+  // v8.87: iPhone never uses a saved/movable dock position. Portrait is fixed
   // at the bottom; landscape is fixed vertically on the LEFT. Keep the logical
   // side in sync with the actual CSS position so Light/Depth/Safe Frame followers
   // are placed beside the dock instead of across/over it.
@@ -12695,7 +12654,7 @@ function updateTouchCamera(){
     cameraTarget.add(pan);
     syncCameraOrbit();
   }else if(cur.count===3){
-    // v8.88 — a quick three-finger tap remains REDO. FOV only takes ownership
+    // v8.87 — a quick three-finger tap remains REDO. FOV only takes ownership
     // after a 120 ms hold, then follows the screen's longest axis:
     // portrait = up/down; landscape = side-to-side.
     touchOrbitPivot=null;touchPanScale=0;
