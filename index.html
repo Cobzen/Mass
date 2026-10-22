@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.91</title>
+<title>MA 3D · v8.92</title>
 <script>
 (() => {
   const CURRENT_BUILD = '8.90';
@@ -2783,7 +2783,7 @@ let pencilDrawButtonPress=null;
 const PENCIL_DRAW_MENU_HOLD_MS=60;
 const PENCIL_DRAW_TOGGLE_HOLD_MS=220;
 const touchPointers=new Map();let touchNavState=null,touchGesture=null,touchOrbitPivot=null,touchNavRAF=0,touchPanScale=0;
-// v8.91 — iPhone/iPad home-indicator safe zone. Only touches that START in
+// v8.92 — iPhone/iPad home-indicator safe zone. Only touches that START in
 // a small rectangle around the actual bottom-centre home indicator belong to
 // iOS. The rest of the bottom edge remains normal MA 3D workspace input.
 // UI controls are intercepted before viewport input; Apple Pencil is unaffected.
@@ -13257,7 +13257,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{
     }
 
     if(e.pointerType==='touch'){
-      // v8.91 — leave only the local rectangle around the home indicator to iOS.
+      // v8.92 — leave only the local rectangle around the home indicator to iOS.
       // Do NOT call preventDefault here: that lets the system home gesture win immediately
       // instead of MA starting a camera/model gesture for the first few pixels.
       if(touchStartsInHomeGestureSafeZone(e)||homeGestureSafePointers.size){
@@ -13632,6 +13632,32 @@ window.addEventListener('pointermove',e=>{
                 scheduleMove(e.clientX,e.clientY);
                 return;
               }
+            }else if(!candidate.wasSelected&&selectedMasses().length>0&&!selectModeHeld&&!transformHoldMode){
+              // v8.92 — in Select mode, an unselected object must not become a
+              // navigation blocker once something is selected. Keep a short
+              // contact as a normal selection tap, but promote an intentional
+              // drag to the exact same one-finger orbit used on empty space.
+              // This preserves selected-object drag = MOVE while allowing the
+              // camera to orbit from any other visible geometry.
+              const startEvent={
+                pointerId:e.pointerId,
+                pointerType:'touch',
+                clientX:candidate.startX,
+                clientY:candidate.startY
+              };
+              mobileSelectTap=null;
+              beginUnifiedTouchNavigation(startEvent);
+              const pt=touchPointers.get(e.pointerId);
+              if(pt){
+                pt.x=e.clientX;pt.y=e.clientY;pt.moved=true;
+                touchPointers.set(e.pointerId,pt);
+              }
+              if(touchGesture){
+                touchGesture.lastX=e.clientX;touchGesture.lastY=e.clientY;
+                touchGesture.moved=true;
+              }
+              requestTouchCameraUpdate();
+              return;
             }
           }
           return;
