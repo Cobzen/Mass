@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.93</title>
+<title>MA 3D · v8.94</title>
 <script>
 (() => {
   const CURRENT_BUILD = '8.93';
@@ -1964,7 +1964,7 @@ html.ma-iphone:not(.ma-iphone-landscape) #viewport{
   max-height:none !important;
   overflow:hidden !important;
 }
-/* v8.93 — iPad standalone full-workspace fix.
+/* v8.94 — iPad standalone full-workspace fix.
    iPadOS standalone can size 100% / fixed inset:0 to the layout viewport with
    the bottom home-indicator safe-area already removed. Like the proven iPhone
    portrait fix, 100vh is used as the single shell height so the WebGL workspace
@@ -14296,6 +14296,12 @@ function performGlobalBacktrack(){
   drawModeHeld=false;
   desktopShapeArmed=false;
   mobileEraseHeld=false;
+  // v8.94 — Global backtrack (including an empty workspace tap) is an explicit
+  // SELECT OFF action in iPad Pencil mode. Mark it before clearing selection,
+  // otherwise setSelection([]) can trigger updateUnifiedSelectionUI() and
+  // immediately auto-reactivate Select, leaving the Look joystick in the
+  // selection-action labels instead of restoring M / L / D / W.
+  if(MA_IS_IPAD&&ipadPencilMode)pencilSelectManuallyOff=true;
   selectModeActive=false;
   selectModeHeld=false;
   desktopSelectArmed=false;
