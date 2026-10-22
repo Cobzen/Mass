@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.76">
+<meta name="ma-build" content="8.79">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.76</title>
+<title>MA 3D · v8.79</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.76';
+  const CURRENT_BUILD = '8.79';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -2144,6 +2144,18 @@ html.ma-iphone #selectHoldBtn.iphoneSelectMultiHold.primaryChoice{
 }
 </style>
 
+/* v8.79 — Random Size uses a wider per-stroke range while keeping one fixed size per draw interaction.
+   Grey means each new draw interaction receives one random size snapshot. */
+<style id="ma-v878-random-size">
+#mobileSizeDrag.randomSizeMode,
+#mobileSizeDrag.randomSizeMode.primaryContextActive,
+#mobileSizeDrag.randomSizeMode.primaryChoice{
+  background:#d9d9d4 !important;
+  color:var(--ink) !important;
+  border-color:rgba(70,70,68,.34) !important;
+}
+</style>
+
 </head>
 <body>
 <div id="app">
@@ -2689,7 +2701,7 @@ const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();
 const worldY=new THREE.Vector3(0,1,0);
 const accent=0x65e5a8,fill=0xb8b8b8,outline=0x242424,selectionRoyal=0x5a72c7; // selected surface: toned-down Royal Blue; geometry/outlines stay unchanged
 let masses=[],nextId=1,nextGroupId=1,selected=null,selectedIds=new Set(),activeTool='select',activeDepth=1.5,drawMode='add',outlinesEnabled=true,thumbnail=false,activeBrushContainerId=null,activeBrushContainerType=null;
-let brushWidthValue=1.5,brushDepthValue=1.5;
+let brushWidthValue=1.5,brushDepthValue=1.5,randomBrushSizeMode=false;
 let currentProjectName='untitled',autosaveTimer=null;
 let currentLibraryProjectId=null,currentLibraryCreatedAt=null,currentLibraryThumbnail=null;
 let projectLibraryVisible=false,blankProjectTemplate=null;
@@ -4865,7 +4877,7 @@ function serializeProject(){
       viewSettings:serializeViewSettings(),
       safeFrame:{...safeFrameState},
       scenes:{items:savedScenes.map(s=>({id:s.id,name:s.name,view:s.view})),activeSceneId,nextSceneId},
-      settings:{activeDepth,brushWidth:brushWidthValue,brushDepth:brushDepthValue,drawMode,outlinesEnabled}
+      settings:{activeDepth,brushWidth:brushWidthValue,brushDepth:brushDepthValue,randomBrushSizeMode,drawMode,outlinesEnabled}
     }
   };
 }
@@ -5843,6 +5855,7 @@ function loadProjectObject(project,{fromAutosave=false}={}){
     if(Number.isFinite(+s.settings.brushWidth))brushWidthValue=clamp(+s.settings.brushWidth,.05,24);
     if(Number.isFinite(+s.settings.brushDepth))brushDepthValue=clamp(+s.settings.brushDepth,.05,24);
     activeDepth=brushWidthValue;
+    if(typeof s.settings.randomBrushSizeMode==='boolean')randomBrushSizeMode=s.settings.randomBrushSizeMode;
     
     setDrawMode(s.settings.drawMode==='cut'?'cut':'add');
     if(typeof s.settings.outlinesEnabled==='boolean')outlinesEnabled=s.settings.outlinesEnabled;
@@ -6724,6 +6737,8 @@ function updateMobileDrawUI(){
   selectBtn?.classList.toggle('iphoneSelectPressPreview',iphoneSelectVisual&&iphoneSelectPressPreview);
   selectBtn?.classList.toggle('iphoneSelectMultiHold',iphoneSelectVisual&&selectModeHeld&&!iphoneSelectPressPreview);
   selectBtn?.classList.toggle('iphoneSelectSingle',iphoneSelectVisual&&selectModeActive&&!selectModeHeld&&!iphoneSelectPressPreview);
+  mobileSizeBtn?.classList.toggle('randomSizeMode',!!(randomBrushSizeMode&&dockMode==='base'));
+  mobileSizeBtn?.setAttribute('aria-pressed',String(!!(randomBrushSizeMode&&dockMode==='base')));
 
   syncPrimaryDockUI();
   syncIPhoneBrushChoiceVisuals();
@@ -7103,12 +7118,25 @@ function prepareMobileStrokePlane(x,y){
 let lastPointerClient=new THREE.Vector2(innerWidth*.5,innerHeight*.5),brushSizing=null,spherePreview=null;
 function brushSize(){return Math.max(.05,Math.abs(brushWidthValue));}
 function brushDepth(){return Math.max(.05,Math.abs(brushDepthValue));}
+const RANDOM_BRUSH_SIZE_MIN=.25,RANDOM_BRUSH_SIZE_MAX=2.00;
+function makeRandomDrawSizeSnapshot(){
+  if(!randomBrushSizeMode)return null;
+  const scale=THREE.MathUtils.lerp(RANDOM_BRUSH_SIZE_MIN,RANDOM_BRUSH_SIZE_MAX,Math.random());
+  return{
+    scale,
+    width:clamp(brushSize()*scale,.05,24),
+    depth:clamp(brushDepth()*scale,.05,24)
+  };
+}
+function strokeBrushWidth(st=interaction){return st?.randomSizeSnapshot?.width??brushSize();}
+function strokeBrushDepth(st=interaction){return st?.randomSizeSnapshot?.depth??brushDepth();}
+function strokeProfileDepth(st=interaction,fallback=brushDepth()){return st?.randomSizeSnapshot?.depth??fallback;}
 function setBrushDepth(v){
   brushDepthValue=clamp(v,.05,24);
   updateBrushSizeButton();
 }
 function currentBrushSample(spatialDepth=0){
-  return{width:brushSize(),depth:brushDepth(),spatialDepth};
+  return{width:strokeBrushWidth(interaction),depth:strokeBrushDepth(interaction),spatialDepth};
 }
 function updateActiveBrushSample(){
   const st=interaction;
@@ -7534,7 +7562,7 @@ function commitShapeFill(st,points){
   }
 
   const plane=st.plane||workplane;
-  const depth=Math.max(.05,brushDepth());
+  const depth=Math.max(.05,strokeProfileDepth(st));
   const profiles=[profile];
 
   if(st.eraseMode){
@@ -7614,8 +7642,8 @@ function updateBrushStrokePreview(st){
   // Build the actual volumetric preview so drawing feels like sculpting
   // with a Pencil, not just dragging a centreline.
   let g=st.tool==='boxbrush'
-    ?createBoxCurveStrokeGeometry(strokePoints,brushSize(),st.brushSamples,brushDepth())
-    :createCurveStrokeGeometry(strokePoints,brushSize(),1,st.brushSamples,brushDepth());
+    ?createBoxCurveStrokeGeometry(strokePoints,strokeBrushWidth(st),st.brushSamples,strokeBrushDepth(st))
+    :createCurveStrokeGeometry(strokePoints,strokeBrushWidth(st),1,st.brushSamples,strokeBrushDepth(st));
 
   if(g&&MA_UNIFIED_UI&&st.brushStrokeMode)placeUnifiedBrushOnPlane(g,!!st.eraseMode);
 
@@ -7929,8 +7957,8 @@ function commitCurveStroke(st,points,brushSamples=null){
   if(MA_UNIFIED_UI&&st.eraseMode){
     clearActiveBrushContainer();
     const cutter=st.tool==='boxbrush'
-      ?createBoxCurveStrokeGeometry(strokePoints,brushSize(),brushSamples,brushDepth())
-      :createCurveStrokeGeometry(strokePoints,brushSize(),-1,brushSamples,brushDepth());
+      ?createBoxCurveStrokeGeometry(strokePoints,strokeBrushWidth(st),brushSamples,strokeBrushDepth(st))
+      :createCurveStrokeGeometry(strokePoints,strokeBrushWidth(st),-1,brushSamples,strokeBrushDepth(st));
 
     if(cutter)placeUnifiedBrushOnPlane(cutter,true);
 
@@ -7966,7 +7994,7 @@ function commitCurveStroke(st,points,brushSamples=null){
   if(drawMode==='cut'){
     clearActiveBrushContainer();
     const host=massById(plane.hostId);if(!host){showToast('CUT NEEDS A SURFACE WORKPLANE');return;}
-    let cutter=st.tool==='boxbrush'?createBoxCurveStrokeGeometry(strokePoints,brushSize(),brushSamples,brushDepth()):createCurveStrokeGeometry(strokePoints,brushSize(),-1,brushSamples,brushDepth());
+    let cutter=st.tool==='boxbrush'?createBoxCurveStrokeGeometry(strokePoints,strokeBrushWidth(st),brushSamples,strokeBrushDepth(st)):createCurveStrokeGeometry(strokePoints,strokeBrushWidth(st),-1,brushSamples,strokeBrushDepth(st));
     if(!cutter){showToast(st.tool==='boxbrush'?'BOX BRUSH CUT FAILED':'CURVE CUT FAILED');return;}
     try{
       const mat=new THREE.Matrix4().compose(plane.origin.clone(),q,new THREE.Vector3(1,1,1));
@@ -7982,7 +8010,7 @@ function commitCurveStroke(st,points,brushSamples=null){
     // delete and undo can therefore address each stroke independently.
     clearActiveBrushContainer();
     const type=brushMassTypeForTool(st.tool);
-    const g=st.tool==='boxbrush'?createBoxCurveStrokeGeometry(strokePoints,brushSize(),brushSamples,brushDepth()):createCurveStrokeGeometry(strokePoints,brushSize(),1,brushSamples,brushDepth());
+    const g=st.tool==='boxbrush'?createBoxCurveStrokeGeometry(strokePoints,strokeBrushWidth(st),brushSamples,strokeBrushDepth(st)):createCurveStrokeGeometry(strokePoints,strokeBrushWidth(st),1,brushSamples,strokeBrushDepth(st));
     if(g&&MA_UNIFIED_UI&&st.brushStrokeMode)placeUnifiedBrushOnPlane(g,false);
     if(!g){showToast(st.tool==='boxbrush'?'BOX BRUSH FAILED':'CURVE FAILED');return;}
     const m=makeMass({type,profile:[{x:0,y:0},{x:1,y:0},{x:1,y:1}],depth:activeDepth,bakedPositions:serializeGeometry(g),__runtimeCreate:true,position:plane.origin.toArray(),quaternion:q.toArray(),scale:[1,1,1]},false);g.dispose();
@@ -8000,11 +8028,11 @@ function commitProfile(st,profile){
   if(p.length<3||Math.abs(signedArea(p))<.002||!simplePolygon(p)){showToast('SHAPE TOO SMALL / CROSSED');return;}
   if(drawMode==='cut'){
     const host=massById(workplane.hostId);if(!host){showToast('CUT NEEDS A SURFACE WORKPLANE');return;}
-    const cut=makeCutRecord(p,host,Math.abs(activeDepth)),cutter=makeCutGeometry(cut);if(!cutter){showToast('CUT FAILED');return;}
+    const cut=makeCutRecord(p,host,Math.abs(strokeProfileDepth(st,activeDepth))),cutter=makeCutGeometry(cut);if(!cutter){showToast('CUT FAILED');return;}
     try{if(commitMassBoolean(host,host.mesh.geometry,cutter)){selectMass(host);recordHistory();showToast('CUT BAKED INTO GEOMETRY · '+cut.depth.toFixed(2));}else showToast('CUT FAILED');}
     finally{cutter.dispose();}
   }else{
-    const m=makeMass({type:st.tool,profile:p.map(q=>({x:q.x,y:q.y})),depth:activeDepth,position:workplane.origin.toArray(),quaternion:basisQuaternion(workplane.u,workplane.v,workplane.n).toArray(),scale:[1,1,1]},false);if(m){selectMass(m);recordHistory();showToast('MASS CREATED');}
+    const m=makeMass({type:st.tool,profile:p.map(q=>({x:q.x,y:q.y})),depth:strokeProfileDepth(st,activeDepth),position:workplane.origin.toArray(),quaternion:basisQuaternion(workplane.u,workplane.v,workplane.n).toArray(),scale:[1,1,1]},false);if(m){selectMass(m);recordHistory();showToast('MASS CREATED');}
   }
 }
 function beginDraw(e){
@@ -8062,9 +8090,11 @@ function beginDraw(e){
     plane,
     depthDirLocal,
     spatialDepth:0,
-    brushSamples:brushStrokeMode?[currentBrushSample(0)]:null
+    randomSizeSnapshot:makeRandomDrawSizeSnapshot(),
+    brushSamples:null
   };
 
+  if(brushStrokeMode)interaction.brushSamples=[currentBrushSample(0)];
   if(interaction.brushSamples?.length)interaction.quickStraightStartSample={...interaction.brushSamples[0]};
   interaction.pointerId=e.pointerId;
   renderer.domElement.setPointerCapture?.(e.pointerId);
@@ -8111,7 +8141,8 @@ function beginOrContinuePolyline(e){
       eraseTargetId,
       pencilPolyline:pencilPointFlow,
       pencilPointerId:pencilPointFlow?e.pointerId:null,
-      pencilGestureAddsPoint:false
+      pencilGestureAddsPoint:false,
+      randomSizeSnapshot:makeRandomDrawSizeSnapshot()
     };
     if(pencilPointFlow)renderer.domElement.setPointerCapture?.(e.pointerId);
     updatePreview([raw],false);clearDrawEndpoint();clearDrawGuide();showInference('');return;
@@ -12189,9 +12220,9 @@ if(mobileSizeBtn){
       startX:e.clientX,
       startY:e.clientY,
       side:maControlsDock?.dataset.side||dockPosition?.side||'left',
-      startSize:(mobileDrawKind==='boxbrush'||mobileDrawKind==='roundbrush')?brushSize():brushDepth()
+      startSize:(mobileDrawKind==='boxbrush'||mobileDrawKind==='roundbrush')?brushSize():brushDepth(),
+      dragStarted:false
     };
-    mobileSizeBtn.classList.add('active');
     mobileSizeBtn.setPointerCapture?.(e.pointerId);
   },{passive:false});
 
@@ -12201,27 +12232,41 @@ if(mobileSizeBtn){
     const dx=e.clientX-unifiedSizeDrag.startX;
     const dy=e.clientY-unifiedSizeDrag.startY;
     const vertical=unifiedSizeDrag.side==='left'||unifiedSizeDrag.side==='right';
-
-    // Match the gesture to the dock orientation. On a side dock, SIZE is a
-    // true vertical scrub: drag UP for bigger and DOWN for smaller. The old
-    // diagonal formula only used 35% of vertical travel, which made iPad feel
-    // unresponsive when the dock was on the left/right edge.
     const travel=vertical?-dy:dx;
+
+    // A short tap toggles Random Size. Do not start changing SIZE until the
+    // pointer has clearly moved, otherwise tapping Random would nudge the base.
+    if(!unifiedSizeDrag.dragStarted){
+      if(Math.hypot(dx,dy)<7)return;
+      unifiedSizeDrag.dragStarted=true;
+    }
+
     const sensitivity=vertical?.009:.012;
     const next=unifiedSizeDrag.startSize*Math.exp(travel*sensitivity);
     if(mobileDrawKind==='boxbrush'||mobileDrawKind==='roundbrush')setBrushSize(next);
     else setBrushDepth(next);
   },{passive:false});
 
-  const endSize=e=>{
+  const endSize=(e,cancel=false)=>{
     if(!unifiedSizeDrag||e.pointerId!==unifiedSizeDrag.pointerId)return;
     e.preventDefault();e.stopPropagation();
+    const st=unifiedSizeDrag;
     unifiedSizeDrag=null;
-    mobileSizeBtn.classList.remove('active');
+    try{mobileSizeBtn.releasePointerCapture?.(e.pointerId);}catch(_){}
+
+    if(!cancel&&!st.dragStarted&&primaryDockMode()==='base'){
+      randomBrushSizeMode=!randomBrushSizeMode;
+      updateMobileDrawUI();
+      scheduleAutosave();
+      showToast(randomBrushSizeMode?'RANDOM SIZE · ON':'RANDOM SIZE · OFF');
+      return;
+    }
+
     scheduleAutosave();
+    updateMobileDrawUI();
   };
-  mobileSizeBtn.addEventListener('pointerup',endSize,{passive:false});
-  mobileSizeBtn.addEventListener('pointercancel',endSize,{passive:false});
+  mobileSizeBtn.addEventListener('pointerup',e=>endSize(e,false),{passive:false});
+  mobileSizeBtn.addEventListener('pointercancel',e=>endSize(e,true),{passive:false});
 }
 
 installBrushPaletteControls();
