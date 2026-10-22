@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.85</title>
+<title>MA 3D · v8.86</title>
 <script>
 (() => {
   const CURRENT_BUILD = '8.85';
@@ -2783,7 +2783,7 @@ let pencilDrawButtonPress=null;
 const PENCIL_DRAW_MENU_HOLD_MS=60;
 const PENCIL_DRAW_TOGGLE_HOLD_MS=220;
 const touchPointers=new Map();let touchNavState=null,touchGesture=null,touchOrbitPivot=null,touchNavRAF=0,touchPanScale=0;
-// v8.85 — keep the existing three-finger REDO tap crisp by requiring a tiny
+// v8.86 — keep the existing three-finger REDO tap crisp by requiring a tiny
 // stationary hold before three-finger movement becomes an FOV gesture.
 const TOUCH_FOV_HOLD_MS=120;
 const TOUCH_FOV_MOVE_THRESHOLD_PX=1.25;
@@ -10343,11 +10343,12 @@ function positionSecondaryViewPanels(){
 function applyDockPosition(){
   if(!maControlsDock)return;
 
-  // v8.17: iPhone never uses a saved/movable dock position. Portrait is fixed
-  // at the bottom; landscape is fixed vertically on the right. CSS owns the
-  // exact safe-area placement, while dataset/classes keep follower panels synced.
+  // v8.86: iPhone never uses a saved/movable dock position. Portrait is fixed
+  // at the bottom; landscape is fixed vertically on the LEFT. Keep the logical
+  // side in sync with the actual CSS position so Light/Depth/Safe Frame followers
+  // are placed beside the dock instead of across/over it.
   if(MA_IS_IPHONE){
-    const side=iPhoneLandscapeDock()?'right':'bottom';
+    const side=iPhoneLandscapeDock()?'left':'bottom';
     dockPosition={side,t:.5};
     setDockOrientation(side);
     clearDockEdges();
@@ -12639,7 +12640,7 @@ function updateTouchCamera(){
     cameraTarget.add(pan);
     syncCameraOrbit();
   }else if(cur.count===3){
-    // v8.85 — a quick three-finger tap remains REDO. FOV only takes ownership
+    // v8.86 — a quick three-finger tap remains REDO. FOV only takes ownership
     // after a 120 ms hold, then follows the screen's longest axis:
     // portrait = up/down; landscape = side-to-side.
     touchOrbitPivot=null;touchPanScale=0;
