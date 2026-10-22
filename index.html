@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.79">
+<meta name="ma-build" content="8.81">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.80</title>
+<title>MA 3D · v8.81</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.79';
+  const CURRENT_BUILD = '8.81';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -1628,25 +1628,20 @@ html.ma-iphone #brushPalettePanel{
    While ADD/ERASE is held, the existing six circles become the six brush choices. */
 html.ma-iphone #brushPalettePanel, html.ma-ipad #brushPalettePanel{display:none !important;}
 
-/* v7.93 — on iPhone/iPad Brush Size is always the second physical circle.
-   Keep desktop unchanged. Grid order preserves the same six-slot shell while
-   contextual dock modes remap their actions by physical slot below. */
-html.ma-iphone #maModeBar #mobileSizeDrag, html.ma-ipad #maModeBar #mobileSizeDrag{order:0;}
-html.ma-iphone #maModeBar #drawAddHoldBtn, html.ma-ipad #maModeBar #drawAddHoldBtn{order:1;}
-html.ma-iphone #maModeBar #drawEraseHoldBtn, html.ma-ipad #maModeBar #drawEraseHoldBtn{order:2;}
-html.ma-iphone #maModeBar #selectHoldBtn, html.ma-ipad #maModeBar #selectHoldBtn{order:3;}
+/* v8.81 — all devices share one physical middle-slot order.
+   Brush Size sits directly after the left/View joystick, followed by ADD, ERASE
+   and SELECT. This keeps desktop, iPad and iPhone spatially identical. */
+html.ma-unified-ui #maModeBar #mobileSizeDrag{order:0;}
+html.ma-unified-ui #maModeBar #drawAddHoldBtn{order:1;}
+html.ma-unified-ui #maModeBar #drawEraseHoldBtn{order:2;}
+html.ma-unified-ui #maModeBar #selectHoldBtn{order:3;}
 
-/* v8.74 — Select mode uses an action-first order instead of the base dock order.
-   Keep each action on its existing physical button/handler; only reorder the
-   four middle circles while Select owns the dock: SCALE · ROTATE · DUP · SELECT. */
-html.ma-iphone #maModeBar.selectToolOrder #drawAddHoldBtn,
-html.ma-ipad #maModeBar.selectToolOrder #drawAddHoldBtn{order:0;}
-html.ma-iphone #maModeBar.selectToolOrder #drawEraseHoldBtn,
-html.ma-ipad #maModeBar.selectToolOrder #drawEraseHoldBtn{order:1;}
-html.ma-iphone #maModeBar.selectToolOrder #mobileSizeDrag,
-html.ma-ipad #maModeBar.selectToolOrder #mobileSizeDrag{order:2;}
-html.ma-iphone #maModeBar.selectToolOrder #selectHoldBtn,
-html.ma-ipad #maModeBar.selectToolOrder #selectHoldBtn{order:3;}
+/* Select owns the same four physical circles on every device, but uses the
+   action-first order SCALE · ROTATE · DUP · SELECT. */
+html.ma-unified-ui #maModeBar.selectToolOrder #drawAddHoldBtn{order:0;}
+html.ma-unified-ui #maModeBar.selectToolOrder #drawEraseHoldBtn{order:1;}
+html.ma-unified-ui #maModeBar.selectToolOrder #mobileSizeDrag{order:2;}
+html.ma-unified-ui #maModeBar.selectToolOrder #selectHoldBtn{order:3;}
 html.ma-unified-ui #viewJoystick.iphoneBrushChoiceMode .joyLabel, html.ma-unified-ui #viewJoystick.iphoneBrushChoiceMode .joyKnob, html.ma-unified-ui #lookJoystick.iphoneBrushChoiceMode .joyLabel, html.ma-unified-ui #lookJoystick.iphoneBrushChoiceMode .joyKnob{
   opacity:0 !important;
   pointer-events:none !important;
@@ -6215,13 +6210,10 @@ function setMobileDrawKind(kind){
 }
 
 const PRIMARY_DRAW_BUTTON_IDS=['drawAddHoldBtn','drawEraseHoldBtn','mobileSizeDrag','selectHoldBtn'];
-// Physical middle-slot order. iPhone/iPad put Brush Size directly after View;
-// desktop keeps the established order. All full-dock contextual modes use
-// these slot ids so their visible order stays unchanged.
-const MOBILE_BRUSH_SIZE_SECOND=!!(window.__MA_IS_IPHONE__||window.__MA_IS_IPAD__);
-const PRIMARY_MIDDLE_SLOT_IDS=MOBILE_BRUSH_SIZE_SECOND
-  ?['mobileSizeDrag','drawAddHoldBtn','drawEraseHoldBtn','selectHoldBtn']
-  :['drawAddHoldBtn','drawEraseHoldBtn','mobileSizeDrag','selectHoldBtn'];
+// v8.81 — one physical middle-slot order on desktop, iPad and iPhone.
+// Contextual full-dock modes consume these same slots, so labels/actions stay
+// aligned with the circles after the desktop order was unified with touch.
+const PRIMARY_MIDDLE_SLOT_IDS=['mobileSizeDrag','drawAddHoldBtn','drawEraseHoldBtn','selectHoldBtn'];
 const IPHONE_DRAW_DOCK_IDS=['viewJoystick',...PRIMARY_MIDDLE_SLOT_IDS,'lookJoystick'];
 const ALL_PRIMARY_DRAW_KINDS=['shape','rect','boxbrush','roundbrush','circle','polyline'];
 const BRUSH_PALETTE_BUTTONS=ALL_PRIMARY_DRAW_KINDS.map(kind=>({
