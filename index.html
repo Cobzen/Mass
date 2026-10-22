@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.79</title>
+<title>MA 3D · v8.80</title>
 <script>
 (() => {
   const CURRENT_BUILD = '8.79';
@@ -2144,7 +2144,7 @@ html.ma-iphone #selectHoldBtn.iphoneSelectMultiHold.primaryChoice{
 }
 </style>
 
-/* v8.79 — Random Size uses a wider per-stroke range while keeping one fixed size per draw interaction.
+/* v8.80 — Random Size uses a wider per-stroke range while keeping one fixed size per draw interaction.
    Grey means each new draw interaction receives one random size snapshot. */
 <style id="ma-v878-random-size">
 #mobileSizeDrag.randomSizeMode,
@@ -9420,7 +9420,7 @@ function duplicateSelected(){
   recordHistory();
   showToast('DUPLICATED · SAME PLACE');
 }
-function deleteSelected(){const sel=selectedMasses();if(!sel.length)return;if(sel.some(m=>m.id===activeBrushContainerId))clearActiveBrushContainer();setSelection([]);for(const m of sel){const i=masses.indexOf(m);if(i>=0)masses.splice(i,1);disposeMass(m);}setSelectionGizmosEnabled(false);recordHistory();showToast('DELETED');}
+function deleteSelected(){const sel=selectedMasses();if(!sel.length)return;const wasSelectMode=!!selectModeActive;if(sel.some(m=>m.id===activeBrushContainerId))clearActiveBrushContainer();setSelection([]);for(const m of sel){const i=masses.indexOf(m);if(i>=0)masses.splice(i,1);disposeMass(m);}setSelectionGizmosEnabled(false);if(wasSelectMode)deactivateSelectMode(false);recordHistory();showToast('DELETED');}
 function deleteAllGeometry(){
   if(!masses.length)return;
   if(!window.confirm('Delete all geometry?'))return;
