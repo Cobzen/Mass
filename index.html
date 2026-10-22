@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="ma-build" content="8.82">
+<meta name="ma-build" content="8.85">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.82</title>
+<title>MA 3D · v8.85</title>
 <script>
 (() => {
-  const CURRENT_BUILD = '8.82';
+  const CURRENT_BUILD = '8.85';
   const CHECK_INTERVAL = 30000;
   let lastCheck = 0;
   let checking = false;
@@ -2783,6 +2783,30 @@ let pencilDrawButtonPress=null;
 const PENCIL_DRAW_MENU_HOLD_MS=60;
 const PENCIL_DRAW_TOGGLE_HOLD_MS=220;
 const touchPointers=new Map();let touchNavState=null,touchGesture=null,touchOrbitPivot=null,touchNavRAF=0,touchPanScale=0;
+// v8.85 — keep the existing three-finger REDO tap crisp by requiring a tiny
+// stationary hold before three-finger movement becomes an FOV gesture.
+const TOUCH_FOV_HOLD_MS=120;
+const TOUCH_FOV_MOVE_THRESHOLD_PX=1.25;
+let touchFovArmTimer=0,touchFovArmed=false;
+function cancelTouchFovArm(){
+  if(touchFovArmTimer){clearTimeout(touchFovArmTimer);touchFovArmTimer=0;}
+  touchFovArmed=false;
+  hideFOVHud();
+}
+function ensureTouchFovArm(){
+  if(touchFovArmed||touchFovArmTimer)return;
+  touchFovArmTimer=setTimeout(()=>{
+    touchFovArmTimer=0;
+    const cur=touchMetrics?.();
+    if(!cur||cur.count!==3)return;
+    touchFovArmed=true;
+    if(touchGesture)touchGesture.fovArmed=true;
+    // Start measuring FOV movement from the moment the hold is accepted, not
+    // from the instant the third finger first touched the screen.
+    touchNavState=cur;
+    showFOVHud();
+  },TOUCH_FOV_HOLD_MS);
+}
 
 const ui={
   toast:document.getElementById('toast'),
@@ -6932,7 +6956,7 @@ function beginDrawModeHold(e,erase=false){
   finalizeRotatePivot(false);
 
   touchPointers.clear();
-  touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;hideFOVHud();
+  touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();
   updateMobileDrawUI();
   syncBrushPalettePanel();
 }
@@ -6962,7 +6986,7 @@ function endDrawModeHold(e=null){
   mobileInputMode='navi';
 
   touchPointers.clear();
-  touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;hideFOVHud();
+  touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();
 
   setTool('select');
   setSelectionGizmosEnabled(false);
@@ -7080,7 +7104,7 @@ function beginSelectModeHold(e){
   finalizeRotatePivot(false);
 
   touchPointers.clear();
-  touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;hideFOVHud();
+  touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();
   updateMobileDrawUI();
 }
 function endSelectModeHold(e=null){
@@ -7108,7 +7132,7 @@ function endSelectModeHold(e=null){
   selectTransformMode=moveArmed?'move':'select';
 
   touchPointers.clear();
-  touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;hideFOVHud();
+  touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();
   updateMobileDrawUI();
 }
 function prepareMobileStrokePlane(x,y){
@@ -11169,7 +11193,7 @@ SAFE_FRAME_DOCK_CONTROLS.forEach(([id,action,ratio])=>installSafeFrameRatioDockC
 
 let maMenuSuppressClickUntil=0;
 let desktopFovDrag=null;
-const DESKTOP_FOV_DEG_PER_PX=.14;
+const FOV_VERTICAL_DEG_PER_PX=.14;
 const MA_MENU_DOCK_ACTIONS=[
   ['viewJoystick','library'],
   [PRIMARY_MIDDLE_SLOT_IDS[0],'export'],
@@ -11226,9 +11250,9 @@ function installMAMenuDockControl(id,action){
     try{el.setPointerCapture?.(e.pointerId);}catch(_){}
 
     // Desktop reuses the old INPUT slot as a direct FOV scrub control.
-    // Horizontal drag mirrors the 3-finger touch gesture.
+    // FOV always scrubs vertically: drag up to increase degrees, down to decrease.
     if(action==='input'&&!MA_DRAW_MOBILE&&e.pointerType==='mouse'&&e.button===0){
-      desktopFovDrag={pointerId:e.pointerId,lastX:e.clientX,moved:false};
+      desktopFovDrag={pointerId:e.pointerId,lastY:e.clientY,moved:false};
       showFOVHud();
       return;
     }
@@ -11237,11 +11261,11 @@ function installMAMenuDockControl(id,action){
   el.addEventListener('pointermove',e=>{
     if(!maMenuDockOpen||!desktopFovDrag||desktopFovDrag.pointerId!==e.pointerId)return;
     e.preventDefault();e.stopImmediatePropagation();
-    const dx=e.clientX-desktopFovDrag.lastX;
-    desktopFovDrag.lastX=e.clientX;
-    if(Math.abs(dx)>.01){
+    const dy=e.clientY-desktopFovDrag.lastY;
+    desktopFovDrag.lastY=e.clientY;
+    if(Math.abs(dy)>.01){
       desktopFovDrag.moved=true;
-      setPerspectiveFOV(perspectiveCamera.fov+dx*DESKTOP_FOV_DEG_PER_PX,{autosave:false});
+      setPerspectiveFOV(perspectiveCamera.fov-dy*FOV_VERTICAL_DEG_PER_PX,{autosave:false});
       showFOVHud();
     }
   },{capture:true,passive:false});
@@ -12412,8 +12436,8 @@ function resetTouchNav(){
   touchNavState=touchMetrics();
   if(touchNavState?.count===2)captureTouchPanScale(touchNavState);
   else touchPanScale=0;
-  if(touchNavState?.count===3)showFOVHud();
-  else hideFOVHud();
+  if(touchNavState?.count===3)ensureTouchFovArm();
+  else cancelTouchFovArm();
 }
 function beginUnifiedTouchNavigation(e){
   const now=performance.now();
@@ -12565,13 +12589,13 @@ function orbitCameraAroundPivot(dx,dy,pivot,sensitivity=.006){
   syncCameraOrbit();
 }
 function updateTouchCamera(){
-  const cur=touchMetrics();if(!cur){touchNavState=null;hideFOVHud();return;}
+  const cur=touchMetrics();if(!cur){touchNavState=null;cancelTouchFovArm();return;}
   if(!touchNavState||touchNavState.count!==cur.count){
     touchNavState=cur;
-    if(cur.count===1){touchOrbitPivot=orbitPivotAtScreen(cur.cx,cur.cy);touchPanScale=0;hideFOVHud();}
-    else if(cur.count===2){captureTouchPanScale(cur);hideFOVHud();}
-    else if(cur.count===3){touchOrbitPivot=null;touchPanScale=0;showFOVHud();}
-    else{touchOrbitPivot=null;touchPanScale=0;hideFOVHud();}
+    if(cur.count===1){touchOrbitPivot=orbitPivotAtScreen(cur.cx,cur.cy);touchPanScale=0;cancelTouchFovArm();}
+    else if(cur.count===2){captureTouchPanScale(cur);cancelTouchFovArm();}
+    else if(cur.count===3){touchOrbitPivot=null;touchPanScale=0;ensureTouchFovArm();}
+    else{touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();}
     return;
   }
   if(cur.count===1){
@@ -12615,16 +12639,27 @@ function updateTouchCamera(){
     cameraTarget.add(pan);
     syncCameraOrbit();
   }else if(cur.count===3){
-    // Three-finger horizontal scrub changes perspective FOV. A stationary
-    // three-finger tap is still free to trigger the existing REDO gesture.
+    // v8.85 — a quick three-finger tap remains REDO. FOV only takes ownership
+    // after a 120 ms hold, then follows the screen's longest axis:
+    // portrait = up/down; landscape = side-to-side.
     touchOrbitPivot=null;touchPanScale=0;
-    const dx=cur.cx-touchNavState.cx;
-    if(Math.abs(dx)>.01){
-      setPerspectiveFOV(perspectiveCamera.fov+dx*.14,{autosave:false});
+    if(!touchFovArmed){
+      ensureTouchFovArm();
+      touchNavState=cur;
+      return;
+    }
+    const size=viewportRenderSize();
+    const landscape=size.w>size.h;
+    const delta=landscape
+      ?(cur.cx-touchNavState.cx)
+      :-(cur.cy-touchNavState.cy);
+    if(Math.abs(delta)>=TOUCH_FOV_MOVE_THRESHOLD_PX){
+      setPerspectiveFOV(perspectiveCamera.fov+delta*FOV_VERTICAL_DEG_PER_PX,{autosave:false});
+      if(touchGesture)touchGesture.fovArmed=true;
+      markSceneViewDirty();
     }
     showFOVHud();
     touchNavState=cur;
-    markSceneViewDirty();
     return;
   }else{
     touchNavState=cur;
@@ -13701,9 +13736,9 @@ window.addEventListener('pointerup',e=>{
           if(g&&!g.moved&&duration<600){
             if(g.emptySelectBacktrack&&g.maxCount===1)performGlobalBacktrack();
             else if(g.maxCount===2){undo();showToast('UNDO');}
-            else if(g.maxCount===3){redo();showToast('REDO');}
+            else if(g.maxCount===3&&!g.fovArmed){redo();showToast('REDO');}
           }
-          touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;hideFOVHud();
+          touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();
         }else resetTouchNav();
         return;
       }
@@ -13758,9 +13793,9 @@ window.addEventListener('pointerup',e=>{
             const g=touchGesture,duration=g?performance.now()-g.startTime:Infinity;
             if(g&&!g.moved&&duration<600){
               if(g.maxCount===2){undo();showToast('UNDO');}
-              else if(g.maxCount===3){redo();showToast('REDO');}
+              else if(g.maxCount===3&&!g.fovArmed){redo();showToast('REDO');}
             }
-            touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;hideFOVHud();
+            touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();
           }else resetTouchNav();
         }
         return;
@@ -13779,9 +13814,9 @@ window.addEventListener('pointerup',e=>{
           if(g&&!g.moved&&duration<600){
             if(g.emptySelectBacktrack&&g.maxCount===1)performGlobalBacktrack();
             else if(g.maxCount===2){undo();showToast('UNDO');}
-            else if(g.maxCount===3){redo();showToast('REDO');}
+            else if(g.maxCount===3&&!g.fovArmed){redo();showToast('REDO');}
           }
-          touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;hideFOVHud();
+          touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();
         }else resetTouchNav();
         return;
       }
@@ -13978,7 +14013,7 @@ window.addEventListener('pointercancel',e=>{
       if(ipadPencilMode){
         touchPointers.delete(e.pointerId);
         if(!touchPointers.size){
-          touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;hideFOVHud();
+          touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();
         }else resetTouchNav();
         return;
       }
@@ -14005,7 +14040,7 @@ window.addEventListener('pointercancel',e=>{
       }
       touchPointers.delete(e.pointerId);
       if(!touchPointers.size){
-        touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;hideFOVHud();
+        touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();
       }else resetTouchNav();
       return;
     }
@@ -14265,7 +14300,7 @@ function resetTouchNavigationRuntime(){
   if(pencilDrawButtonPress?.timer)clearTimeout(pencilDrawButtonPress.timer);
   pencilDrawButtonPress=null;
   touchPointers.clear();
-  touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;hideFOVHud();
+  touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;cancelTouchFovArm();
   ipadStraightHeld=false;
   if(MA_UNIFIED_UI){
     drawModeHeld=false;
