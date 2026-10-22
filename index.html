@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.90</title>
+<title>MA 3D · v8.91</title>
 <script>
 (() => {
   const CURRENT_BUILD = '8.90';
@@ -2783,9 +2783,10 @@ let pencilDrawButtonPress=null;
 const PENCIL_DRAW_MENU_HOLD_MS=60;
 const PENCIL_DRAW_TOGGLE_HOLD_MS=220;
 const touchPointers=new Map();let touchNavState=null,touchGesture=null,touchOrbitPivot=null,touchNavRAF=0,touchPanScale=0;
-// v8.90 — iPhone/iPad home-indicator safe zone. Touches that START in this
-// bottom strip belong to iOS, not MA 3D. UI controls are unaffected because
-// they are intercepted before viewport input; Apple Pencil is unaffected too.
+// v8.91 — iPhone/iPad home-indicator safe zone. Only touches that START in
+// a small rectangle around the actual bottom-centre home indicator belong to
+// iOS. The rest of the bottom edge remains normal MA 3D workspace input.
+// UI controls are intercepted before viewport input; Apple Pencil is unaffected.
 const homeGestureSafePointers=new Set();
 let homeGestureInsetProbe=null;
 function iosHomeGestureSafeZonePx(){
@@ -2798,15 +2799,25 @@ function iosHomeGestureSafeZonePx(){
     homeGestureInsetProbe=probe;
   }
   const safe=homeGestureInsetProbe?(parseFloat(getComputedStyle(homeGestureInsetProbe).height)||0):0;
-  // Home-indicator inset + a small buffer. Keep a useful minimum on iPads /
-  // browser states where safe-area-inset-bottom can temporarily report zero.
+  // Home-indicator inset + a small vertical buffer.
   return Math.min(80,Math.max(44,safe+18));
+}
+function iosHomeGestureSafeZoneWidthPx(){
+  const vv=window.visualViewport;
+  const width=vv?vv.width:(window.innerWidth||document.documentElement.clientWidth||0);
+  // Localised around the system home bar instead of blocking the full edge.
+  // Scale gently across iPhone/iPad sizes while keeping it intentionally narrow.
+  return Math.min(340,Math.max(180,width*.28));
 }
 function touchStartsInHomeGestureSafeZone(e){
   if(e.pointerType!=='touch'||!(window.__MA_IS_IPHONE__||window.__MA_IS_IPAD__))return false;
   const vv=window.visualViewport;
+  const left=vv?vv.offsetLeft:0;
+  const width=vv?vv.width:(window.innerWidth||document.documentElement.clientWidth||0);
   const bottom=vv?vv.offsetTop+vv.height:(window.innerHeight||document.documentElement.clientHeight||0);
-  return e.clientY>=bottom-iosHomeGestureSafeZonePx();
+  const centreX=left+width*.5;
+  const halfWidth=iosHomeGestureSafeZoneWidthPx()*.5;
+  return e.clientY>=bottom-iosHomeGestureSafeZonePx() && Math.abs(e.clientX-centreX)<=halfWidth;
 }
 // v8.87 — keep the existing three-finger REDO tap crisp by requiring a tiny
 // stationary hold before three-finger movement becomes an FOV gesture.
@@ -13246,8 +13257,8 @@ renderer.domElement.addEventListener('pointerdown',e=>{
     }
 
     if(e.pointerType==='touch'){
-      // v8.90 — leave the home-indicator strip completely to iOS. Do NOT call
-      // preventDefault here: that lets the system home gesture win immediately
+      // v8.91 — leave only the local rectangle around the home indicator to iOS.
+      // Do NOT call preventDefault here: that lets the system home gesture win immediately
       // instead of MA starting a camera/model gesture for the first few pixels.
       if(touchStartsInHomeGestureSafeZone(e)||homeGestureSafePointers.size){
         homeGestureSafePointers.add(e.pointerId);
