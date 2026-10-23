@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#151515">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>MA 3D · v8.94</title>
+<title>MA 3D · v9.00</title>
 <script>
 (() => {
   const CURRENT_BUILD = '8.93';
@@ -184,6 +184,23 @@ canvas{display:block;width:100%;height:100%;outline:none}
   font-weight:650;
   letter-spacing:.04em;
   font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+#mirrorHud{
+  position:fixed;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  z-index:165;
+  display:none;
+  pointer-events:none;
+  padding:9px 14px;
+  border-radius:999px;
+  background:rgba(45,45,43,.88);
+  color:#fff;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.05em;
   white-space:nowrap;
 }
 #marquee{
@@ -2276,7 +2293,7 @@ html.ma-iphone #selectHoldBtn.iphoneSelectMultiHold.primaryChoice{
   </div>
   
   
-  <div id="toast"></div><div id="inference"></div><div id="fovHud">FOV 50°</div><div id="planeBadge">WORKPLANE · GROUND</div><div id="marquee"></div><div id="brushSizer"></div>
+  <div id="toast"></div><div id="inference"></div><div id="fovHud">FOV 50°</div><div id="mirrorHud">MIRROR ON</div><div id="planeBadge">WORKPLANE · GROUND</div><div id="marquee"></div><div id="brushSizer"></div>
   <div id="safeFrameOverlay"><div id="safeFrameFrame"><div id="safeFrameLabel">16:9</div></div></div>
   <div id="safeFramePanel" class="maSafeFrameDockPanel">
     <div class="maSecondaryInner">
@@ -2821,6 +2838,59 @@ let pencilDrawButtonPress=null;
 const PENCIL_DRAW_MENU_HOLD_MS=60;
 const PENCIL_DRAW_TOGGLE_HOLD_MS=220;
 const touchPointers=new Map();let touchNavState=null,touchGesture=null,touchOrbitPivot=null,touchNavRAF=0,touchPanScale=0;
+// v8.97 — track 4-finger Mirror independently from Select/NAVI routing.
+// This is necessary because touches landing on geometry are normally consumed
+// as pending Select taps before they ever enter touchPointers.
+const mirrorTouchPointers=new Map();
+let mirrorTouchGesture=null;
+const MIRROR_TOUCH_MOVE_PX=12;
+const MIRROR_TOUCH_MAX_MS=650;
+// v8.97 — persistent X symmetry. Pair metadata lives on the actual masses so
+// every committed geometry transaction can be mirrored from the source of truth.
+let mirrorModeX=false;
+let nextMirrorPairId=1;
+let mirrorSyncing=false;
+function beginMirrorTouchTracking(e){
+  if(e.pointerType!=='touch'||!(window.__MA_IS_IPHONE__||window.__MA_IS_IPAD__))return false;
+  const now=performance.now();
+  if(!mirrorTouchGesture)mirrorTouchGesture={startTime:now,maxCount:0,moved:false,candidate:false};
+  mirrorTouchPointers.set(e.pointerId,{startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY});
+  mirrorTouchGesture.maxCount=Math.max(mirrorTouchGesture.maxCount,mirrorTouchPointers.size);
+  if(mirrorTouchGesture.maxCount===4){
+    mirrorTouchGesture.candidate=true;
+    mobileSelectTap=null;
+    if(marqueeState)hideMarquee();
+    if(interaction?.kind==='move')cancelInteraction(true);
+    cancelTouchFovArm();
+  }
+  return !!mirrorTouchGesture.candidate;
+}
+function updateMirrorTouchTracking(e){
+  const p=mirrorTouchPointers.get(e.pointerId);
+  if(!p||!mirrorTouchGesture)return;
+  p.x=e.clientX;p.y=e.clientY;
+  if(Math.hypot(e.clientX-p.startX,e.clientY-p.startY)>MIRROR_TOUCH_MOVE_PX)mirrorTouchGesture.moved=true;
+}
+function endMirrorTouchTracking(e,cancelled=false){
+  const p=mirrorTouchPointers.get(e.pointerId),g=mirrorTouchGesture;
+  if(!p||!g)return false;
+  if(Math.hypot(e.clientX-p.startX,e.clientY-p.startY)>MIRROR_TOUCH_MOVE_PX)g.moved=true;
+  mirrorTouchPointers.delete(e.pointerId);
+  const consumed=!!g.candidate;
+  if(consumed){touchPointers.delete(e.pointerId);mobileSelectTap=null;}
+  if(!mirrorTouchPointers.size){
+    const duration=performance.now()-g.startTime;
+    const shouldMirror=!cancelled&&g.candidate&&g.maxCount===4&&!g.moved&&duration<MIRROR_TOUCH_MAX_MS;
+    mirrorTouchGesture=null;
+    if(consumed){
+      touchPointers.clear();
+      touchGesture=null;touchNavState=null;touchOrbitPivot=null;touchPanScale=0;
+      cancelTouchFovArm();mobileMovePointerId=null;
+    }
+    if(shouldMirror)toggleMirrorModeX();
+  }
+  return consumed;
+}
 // v8.92 — iPhone/iPad home-indicator safe zone. Only touches that START in
 // a small rectangle around the actual bottom-centre home indicator belong to
 // iOS. The rest of the bottom edge remains normal MA 3D workspace input.
@@ -2886,6 +2956,7 @@ const ui={
   toast:document.getElementById('toast'),
   inference:document.getElementById('inference'),
   fovHud:document.getElementById('fovHud'),
+  mirrorHud:document.getElementById('mirrorHud'),
   planeBadge:document.getElementById('planeBadge'),
   brushSizer:document.getElementById('brushSizer'),
   marquee:document.getElementById('marquee'),
@@ -2926,6 +2997,17 @@ function showFOVHud(){
 }
 function hideFOVHud(){
   if(ui?.fovHud)ui.fovHud.style.display='none';
+}
+let mirrorHudTimer=0;
+function showMirrorHud(){
+  if(!ui?.mirrorHud)return;
+  if(mirrorHudTimer){clearTimeout(mirrorHudTimer);mirrorHudTimer=0;}
+  ui.mirrorHud.textContent=`MIRROR ${mirrorModeX?'ON':'OFF'}`;
+  ui.mirrorHud.style.display='block';
+  mirrorHudTimer=setTimeout(()=>{
+    mirrorHudTimer=0;
+    if(ui?.mirrorHud)ui.mirrorHud.style.display='none';
+  },950);
 }
 
 // Pure graphic mode is only active when Ambient is exactly 0.
@@ -3569,8 +3651,8 @@ function applyExportCameraSnapshot(v){
     const axis=projectionAxisVector(projection);
     const dist=Math.max(10,perspectiveCamera.position.distanceTo(perspectiveTarget),cameraDistance||10);
     orthoCamera.position.copy(cameraTarget).addScaledVector(axis,dist);
+    // v8.97 — keep Y side-view upright: MA Z stays vertical on screen.
     orthoCamera.up.set(0,1,0);
-    if(projection==='y')orthoCamera.up.set(0,0,-1);
     orthoCamera.lookAt(cameraTarget);
     orthoCamera.updateMatrixWorld(true);
     updateOrthographicProjection();
@@ -3931,8 +4013,8 @@ function frameSceneInActiveView(){
   const diagonal=Math.max(.5,size.length());
   const dist=Math.max(10,diagonal*2.5);
   orthoCamera.position.copy(cameraTarget).addScaledVector(axis,dist);
+  // v8.97 — same upright basis when framing an orthographic view.
   orthoCamera.up.set(0,1,0);
-  if(projectionMode==='y')orthoCamera.up.set(0,0,-1);
   orthoCamera.lookAt(cameraTarget);
   orthoCamera.updateMatrixWorld(true);
 
@@ -3952,6 +4034,17 @@ function frameSceneInActiveView(){
 function setProjectionMode(mode,announce=true,restore=null,frameScene=false){
   const next=(mode==='x'||mode==='y'||mode==='z'||mode==='iso')?mode:'perspective';
   if(next===projectionMode&&!restore){
+    if(next!=='perspective'){
+      const axis=projectionAxisVector(next);
+      const dist=Math.max(10,perspectiveCamera.position.distanceTo(perspectiveTarget),cameraDistance||10);
+      orthoCamera.position.copy(cameraTarget).addScaledVector(axis,dist);
+      orthoCamera.up.set(0,1,0);
+      orthoCamera.lookAt(cameraTarget);
+      orthoCamera.updateMatrixWorld(true);
+      updateOrthographicProjection();
+      syncCameraOrbit();
+      setOrthographicDrawingPlane(false);
+    }
     if(frameScene)frameSceneInActiveView();
     updateMobileDrawUI();
     return;
@@ -3990,8 +4083,8 @@ function setProjectionMode(mode,announce=true,restore=null,frameScene=false){
     const axis=projectionAxisVector(next);
     const dist=Math.max(10,perspectiveCamera.position.distanceTo(perspectiveTarget),cameraDistance||10);
     orthoCamera.position.copy(cameraTarget).addScaledVector(axis,dist);
+    // v8.97 — keep Y side-view upright: MA Z stays vertical on screen.
     orthoCamera.up.set(0,1,0);
-    if(next==='y')orthoCamera.up.set(0,0,-1);
     orthoCamera.lookAt(cameraTarget);
     orthoCamera.updateMatrixWorld(true);
     updateOrthographicProjection();
@@ -4814,7 +4907,10 @@ function makeMass(data,addHistory=false){
   group.position.fromArray(data.position||[0,0,0]);group.quaternion.fromArray(data.quaternion||[0,0,0,1]);group.scale.fromArray(data.scale||[1,1,1]);
   const id=data.id??nextId++;nextId=Math.max(nextId,id+1);group.userData.massId=id;mesh.userData.massId=id;
   const edgeMat=new THREE.LineBasicMaterial({color:outline,transparent:true,opacity:1});const edges=new THREE.LineSegments(outlineGeometryForMass(g,massType),edgeMat);edges.renderOrder=4;edges.userData.massId=id;group.add(edges);
-  const m={id,name:data.name||('MASS '+id),type:massType,profile,depth:data.depth,cuts:baked?[]:cuts,baked,groupId:data.groupId??null,group,mesh,edges};if(m.groupId!=null)nextGroupId=Math.max(nextGroupId,(m.groupId|0)+1);masses.push(m);updateMassVisual(m);if(addHistory)recordHistory();return m;
+  const m={id,name:data.name||('MASS '+id),type:massType,profile,depth:data.depth,cuts:baked?[]:cuts,baked,groupId:data.groupId??null,mirrorPairId:data.mirrorPairId??null,mirrorRole:data.mirrorRole||null,group,mesh,edges};
+  if(m.groupId!=null)nextGroupId=Math.max(nextGroupId,(m.groupId|0)+1);
+  if(m.mirrorPairId!=null)nextMirrorPairId=Math.max(nextMirrorPairId,(m.mirrorPairId|0)+1);
+  masses.push(m);updateMassVisual(m);if(addHistory)recordHistory();return m;
 }
 function disposeMass(m){
   if(!m||m._disposed)return;
@@ -4840,7 +4936,7 @@ function getActiveBrushContainer(tool=null){
   return m;
 }
 
-function serializeMass(m){const geometryPositions=serializeGeometry(m.mesh.geometry),geometryNormals=m.type==='curve'?serializeGeometryNormals(m.mesh.geometry):null;return{id:m.id,name:m.name,type:m.type,groupId:m.groupId??null,profile:m.profile.map(p=>({x:p.x,y:p.y})),depth:m.depth,cuts:m.baked?[]:(m.cuts||[]).map(serializeCut),baked:!!m.baked,geometryPositions:m.baked?null:geometryPositions,bakedPositions:m.baked?geometryPositions:null,geometryNormals,position:m.group.position.toArray(),quaternion:m.group.quaternion.toArray(),scale:m.group.scale.toArray()};}
+function serializeMass(m){const geometryPositions=serializeGeometry(m.mesh.geometry),geometryNormals=m.type==='curve'?serializeGeometryNormals(m.mesh.geometry):null;return{id:m.id,name:m.name,type:m.type,groupId:m.groupId??null,mirrorPairId:m.mirrorPairId??null,mirrorRole:m.mirrorRole||null,profile:m.profile.map(p=>({x:p.x,y:p.y})),depth:m.depth,cuts:m.baked?[]:(m.cuts||[]).map(serializeCut),baked:!!m.baked,geometryPositions:m.baked?null:geometryPositions,bakedPositions:m.baked?geometryPositions:null,geometryNormals,position:m.group.position.toArray(),quaternion:m.group.quaternion.toArray(),scale:m.group.scale.toArray()};}
 function snapshot(){return masses.map(m=>({...serializeMass(m),baked:!!m.baked,geometryPositions:serializeGeometry(m.mesh.geometry)}));}
 function captureSceneView(){
   // A scene is a complete shot snapshot, not only a camera bookmark. Persist the
@@ -5023,7 +5119,7 @@ function serializeProject(){
       viewSettings:serializeViewSettings(),
       safeFrame:{...safeFrameState},
       scenes:{items:savedScenes.map(s=>({id:s.id,name:s.name,view:s.view})),activeSceneId,nextSceneId},
-      settings:{activeDepth,brushWidth:brushWidthValue,brushDepth:brushDepthValue,randomBrushSizeMode,drawMode,outlinesEnabled}
+      settings:{activeDepth,brushWidth:brushWidthValue,brushDepth:brushDepthValue,randomBrushSizeMode,drawMode,outlinesEnabled,mirrorModeX}
     }
   };
 }
@@ -5935,7 +6031,7 @@ function loadProjectObject(project,{fromAutosave=false}={}){
   restoring=true;
   cancelInteraction(false);
   for(const m of [...masses])disposeMass(m);
-  masses=[];selected=null;selectedIds.clear();nextId=1;nextGroupId=1;
+  masses=[];selected=null;selectedIds.clear();nextId=1;nextGroupId=1;nextMirrorPairId=1;
   for(const d of s.masses)makeMass(d,false);
   setSelection([]);
 
@@ -5996,12 +6092,14 @@ function loadProjectObject(project,{fromAutosave=false}={}){
   }
   renderSceneBar();
 
+  mirrorModeX=false;
   if(s.settings){
     if(Number.isFinite(+s.settings.activeDepth))setBrushSize(+s.settings.activeDepth);
     if(Number.isFinite(+s.settings.brushWidth))brushWidthValue=clamp(+s.settings.brushWidth,.05,24);
     if(Number.isFinite(+s.settings.brushDepth))brushDepthValue=clamp(+s.settings.brushDepth,.05,24);
     activeDepth=brushWidthValue;
     if(typeof s.settings.randomBrushSizeMode==='boolean')randomBrushSizeMode=s.settings.randomBrushSizeMode;
+    mirrorModeX=typeof s.settings.mirrorModeX==='boolean'?s.settings.mirrorModeX:false;
     
     setDrawMode(s.settings.drawMode==='cut'?'cut':'add');
     if(typeof s.settings.outlinesEnabled==='boolean')outlinesEnabled=s.settings.outlinesEnabled;
@@ -6044,7 +6142,7 @@ function loadProjectObject(project,{fromAutosave=false}={}){
   if(!fromAutosave)scheduleAutosave();
   return true;
 }
-function recordHistory(){if(restoring)return;const s=snapshot(),json=JSON.stringify(s);if(historyIndex>=0&&JSON.stringify(history[historyIndex])===json){scheduleAutosave();return;}history.splice(historyIndex+1);history.push(s);if(history.length>60)history.shift();historyIndex=history.length-1;fitShadowCamera(true);scheduleAutosave();}
+function recordHistory(){if(restoring)return;syncMirrorStateBeforeCommit();const s=snapshot(),json=JSON.stringify(s);if(historyIndex>=0&&JSON.stringify(history[historyIndex])===json){scheduleAutosave();return;}history.splice(historyIndex+1);history.push(s);if(history.length>60)history.shift();historyIndex=history.length-1;fitShadowCamera(true);scheduleAutosave();}
 
 // Fast history restore: geometry remains the source of truth, but unchanged masses
 // are kept alive instead of rebuilding their mesh + EdgesGeometry on every Undo/Redo.
@@ -6064,7 +6162,7 @@ function historyCutEq(c,d){
   return (a.edgeIndex|0)===(b.edgeIndex|0)&&historyArrayEq(a.baseMid?.toArray?.()||[],b.baseMid||[]);
 }
 function massMatchesHistoryState(m,d){
-  if(!m||!d||m.id!==d.id||m.name!==(d.name||('MASS '+d.id))||m.type!==(d.type||'draw')||(m.groupId??null)!==(d.groupId??null))return false;
+  if(!m||!d||m.id!==d.id||m.name!==(d.name||('MASS '+d.id))||m.type!==(d.type||'draw')||(m.groupId??null)!==(d.groupId??null)||(m.mirrorPairId??null)!==(d.mirrorPairId??null)||(m.mirrorRole||null)!==(d.mirrorRole||null))return false;
   if(!historyArrayEq(m.group.position.toArray(),d.position||[0,0,0]))return false;
   if(!historyArrayEq(m.group.quaternion.toArray(),d.quaternion||[0,0,0,1]))return false;
   if(!historyArrayEq(m.group.scale.toArray(),d.scale||[1,1,1]))return false;
@@ -6134,6 +6232,7 @@ function restoreState(s){
   selectedIds.clear();
   nextId=1;
   nextGroupId=1;
+  nextMirrorPairId=1;
 
   for(const d of s){
     const cur=byId.get(d.id);
@@ -9553,6 +9652,9 @@ function duplicateSelected(){
     // Exact duplicate: same position, rotation and scale as its source.
     d.position=Array.isArray(d.position)?d.position.slice():[0,0,0];
     d.groupId=newGid;
+    // Duplicate creates a new independent object. Mirror pairing is assigned
+    // by the central symmetry commit only when Mirror X is currently ON.
+    d.mirrorPairId=null;d.mirrorRole=null;
     const m=makeMass(d,false);
     if(m)newItems.push(m);
   }
@@ -9562,6 +9664,161 @@ function duplicateSelected(){
   setSelection(newItems);
   recordHistory();
   showToast('DUPLICATED · SAME PLACE');
+}
+function toggleMirrorModeX(){
+  mirrorModeX=!mirrorModeX;
+  scheduleAutosave();
+  showMirrorHud();
+  return mirrorModeX;
+}
+function reflectedMassTransformData(src){
+  src.group.updateMatrixWorld(true);
+  const sourceMatrix=new THREE.Matrix4().compose(
+    src.group.position.clone(),src.group.quaternion.clone(),src.group.scale.clone()
+  );
+  const mirroredMatrix=new THREE.Matrix4().makeScale(-1,1,1).multiply(sourceMatrix);
+  const p=new THREE.Vector3(),q=new THREE.Quaternion(),s=new THREE.Vector3();
+  mirroredMatrix.decompose(p,q,s);
+  return{position:p.toArray(),quaternion:q.toArray(),scale:s.toArray()};
+}
+function mirroredMassData(src,{id=null,pairId=null,role=null,groupId=null,name=null}={}){
+  const d=serializeMass(src),tr=reflectedMassTransformData(src);
+  if(id==null)delete d.id;else d.id=id;
+  d.position=tr.position;d.quaternion=tr.quaternion;d.scale=tr.scale;
+  d.mirrorPairId=pairId??src.mirrorPairId??null;
+  d.mirrorRole=role||((src.mirrorRole==='b')?'a':'b');
+  d.groupId=groupId;
+  if(name!=null)d.name=name;
+  return d;
+}
+function applySerializedMassDataInPlace(m,d){
+  if(!m||!d)return false;
+  const profile=cleanProfile((d.profile||[]).map(p=>vec2(p.x,p.y)));
+  const cuts=(d.cuts||[]).map(normalizeCut);
+  const source=geometryFromMassData(d,profile,cuts);
+  let g=source.geometry;if(!g)return false;
+  const massType=d.type||m.type||'draw';
+  if(!source.exactSerialized||d.__runtimeCreate)g=smoothGeometryForType(g,massType);
+  else if(massType==='curve'){
+    restoreRoundBrushNormalsInPlace(g,d.geometryNormals,58);
+    g.computeBoundingBox();g.computeBoundingSphere();
+  }else{g.computeVertexNormals();g.computeBoundingBox();g.computeBoundingSphere();}
+
+  const old=m.mesh.geometry;m.mesh.geometry=g;old?.dispose?.();
+  m.type=massType;
+  m.profile=profile;
+  m.depth=d.depth;
+  m.cuts=source.baked?[]:cuts;
+  m.baked=!!source.baked;
+  m.name=d.name||m.name;
+  m.groupId=d.groupId??null;
+  m.mirrorPairId=d.mirrorPairId??null;
+  m.mirrorRole=d.mirrorRole||null;
+  m.group.position.fromArray(d.position||[0,0,0]);
+  m.group.quaternion.fromArray(d.quaternion||[0,0,0,1]);
+  m.group.scale.fromArray(d.scale||[1,1,1]);
+  m.group.updateMatrixWorld(true);
+  m.edges.geometry.dispose();
+  m.edges.geometry=outlineGeometryForMass(g,massType);
+  invalidateMassGeometryDerivedState(m,{invalidateManifold:true});
+  updateMassVisual(m);
+  markViewPlaneSectionDirty();
+  if(m.groupId!=null)nextGroupId=Math.max(nextGroupId,(m.groupId|0)+1);
+  if(m.mirrorPairId!=null)nextMirrorPairId=Math.max(nextMirrorPairId,(m.mirrorPairId|0)+1);
+  if(selected?.id===m.id)selected=m;
+  return true;
+}
+function removeMassForMirror(m){
+  if(!m)return;
+  if(m.id===activeBrushContainerId)clearActiveBrushContainer();
+  selectedIds.delete(m.id);
+  const i=masses.indexOf(m);if(i>=0)masses.splice(i,1);
+  disposeMass(m);
+  if(selected?.id===m.id)selected=null;
+}
+function createMirrorPartner(src){
+  if(!src)return null;
+  const pairId=src.mirrorPairId??nextMirrorPairId++;
+  if(src.mirrorPairId==null){src.mirrorPairId=pairId;src.mirrorRole='a';}
+  const role=src.mirrorRole==='b'?'a':'b';
+  const d=mirroredMassData(src,{pairId,role,groupId:null,name:src.name});
+  const partner=makeMass(d,false);
+  return partner;
+}
+function syncMirrorPairFromSource(src,target){
+  if(!src||!target)return false;
+  const pairId=src.mirrorPairId??target.mirrorPairId??nextMirrorPairId++;
+  if(src.mirrorPairId==null)src.mirrorPairId=pairId;
+  if(!src.mirrorRole)src.mirrorRole=target.mirrorRole==='a'?'b':'a';
+  const role=src.mirrorRole==='b'?'a':'b';
+  const d=mirroredMassData(src,{id:target.id,pairId,role,groupId:target.groupId??null,name:target.name});
+  return applySerializedMassDataInPlace(target,d);
+}
+function previousMirrorPairMembers(prev,pairId){
+  if(pairId==null||!Array.isArray(prev))return[];
+  return prev.filter(d=>(d.mirrorPairId??null)===pairId);
+}
+function massMatchesMirrorState(m,d){
+  if(!m||!d)return false;
+  // Mirror reacts only to actual model geometry/transforms. Renaming, grouping
+  // or pair bookkeeping must never create a symmetry copy by themselves.
+  const cmp={...d,name:m.name,groupId:m.groupId??null,mirrorPairId:m.mirrorPairId??null,mirrorRole:m.mirrorRole||null};
+  return massMatchesHistoryState(m,cmp);
+}
+function syncMirrorStateBeforeCommit(){
+  if(!mirrorModeX||mirrorSyncing||restoring||historyIndex<0)return;
+  mirrorSyncing=true;
+  try{
+    const prev=history[historyIndex]||[];
+    const prevById=new Map(prev.map(d=>[d.id,d]));
+
+    // Existing mirror pairs: propagate whichever side actually changed. If one
+    // side was deleted while Mirror is ON, its partner is deleted too.
+    const pairIds=[...new Set(masses.map(m=>m.mirrorPairId).filter(v=>v!=null))];
+    for(const pairId of pairIds){
+      let pair=masses.filter(m=>m.mirrorPairId===pairId);
+      const prevPair=previousMirrorPairMembers(prev,pairId);
+      if(pair.length===1){
+        const lone=pair[0],old=prevById.get(lone.id);
+        const changed=!old||!massMatchesMirrorState(lone,old);
+        if(prevPair.length>=2){
+          removeMassForMirror(lone);
+          continue;
+        }
+        if(changed)createMirrorPartner(lone);
+        continue;
+      }
+      if(pair.length<2)continue;
+      // Pair IDs are deliberately one-to-one. If legacy/broken data has more,
+      // only synchronize the first two and leave the extras untouched.
+      pair=pair.slice(0,2);
+      const a=pair[0],b=pair[1];
+      const aOld=prevById.get(a.id),bOld=prevById.get(b.id);
+      const aChanged=!aOld||!massMatchesMirrorState(a,aOld);
+      const bChanged=!bOld||!massMatchesMirrorState(b,bOld);
+      if(!aChanged&&!bChanged)continue;
+      let source=a,target=b;
+      if(bChanged&&!aChanged){source=b;target=a;}
+      else if(aChanged&&bChanged){
+        const aSel=selectedIds.has(a.id),bSel=selectedIds.has(b.id);
+        if(bSel&&!aSel){source=b;target=a;}
+        else if(a.mirrorRole==='b'&&b.mirrorRole==='a'){source=b;target=a;}
+      }
+      syncMirrorPairFromSource(source,target);
+    }
+
+    // New or newly edited unpaired geometry becomes symmetric. Untouched
+    // pre-existing geometry is intentionally left alone when Mirror is enabled.
+    for(const m of [...masses]){
+      if(m.mirrorPairId!=null)continue;
+      const old=prevById.get(m.id);
+      const touched=!old||!massMatchesMirrorState(m,old);
+      if(touched)createMirrorPartner(m);
+    }
+
+    updateAllMassVisuals();
+    syncRotateGizmo?.();
+  }finally{mirrorSyncing=false;}
 }
 function deleteSelected(){const sel=selectedMasses();if(!sel.length)return;const wasSelectMode=!!selectModeActive;if(sel.some(m=>m.id===activeBrushContainerId))clearActiveBrushContainer();setSelection([]);for(const m of sel){const i=masses.indexOf(m);if(i>=0)masses.splice(i,1);disposeMass(m);}setSelectionGizmosEnabled(false);if(wasSelectMode)deactivateSelectMode(false);recordHistory();showToast('DELETED');}
 function deleteAllGeometry(){
@@ -13304,6 +13561,11 @@ renderer.domElement.addEventListener('pointerdown',e=>{
       }
       e.preventDefault();
 
+      if(beginMirrorTouchTracking(e)){
+        renderer.domElement.setPointerCapture?.(e.pointerId);
+        return;
+      }
+
       // v8.50 — if SELECT is already active and its button is currently being
       // held, the first viewport contact immediately promotes that press to
       // Multi Select. The user never has to wait out the hold timer or tap twice.
@@ -13612,6 +13874,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{
 },{passive:false});
 window.addEventListener('pointermove',e=>{
   if(MA_UNIFIED_UI){
+    if(e.pointerType==='touch')updateMirrorTouchTracking(e);
     if(unifiedUIPointers.has(e.pointerId))return;
     if(e.pointerType==='touch'){
       if(homeGestureSafePointers.has(e.pointerId))return;
@@ -13842,6 +14105,10 @@ window.addEventListener('pointermove',e=>{
 },{passive:false});
 window.addEventListener('pointerup',e=>{
   if(MA_UNIFIED_UI){
+    if(e.pointerType==='touch'&&endMirrorTouchTracking(e,false)){
+      e.preventDefault();
+      return;
+    }
     if(unifiedUIPointers.has(e.pointerId)){
       e.preventDefault();
       return;
@@ -14131,6 +14398,7 @@ window.addEventListener('pointerup',e=>{
 });
 window.addEventListener('pointercancel',e=>{
   if(MA_UNIFIED_UI){
+    if(e.pointerType==='touch'&&endMirrorTouchTracking(e,true))return;
     if(unifiedUIPointers.has(e.pointerId))return;
     clearMobileStraightHold();
 
